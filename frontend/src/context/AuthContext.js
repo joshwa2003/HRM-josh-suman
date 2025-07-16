@@ -28,7 +28,7 @@ const authReducer = (state, action) => {
       return {
         ...state,
         isLoading: true,
-        error: null,
+        // Don't clear error here to prevent form reset
       };
     case AUTH_ACTIONS.LOGIN_SUCCESS:
       return {
@@ -88,23 +88,30 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
 
-      if (token) {
+      if (token && user) {
         try {
-          // Get fresh profile data to ensure we have latest info including profile photo
-          const profileResponse = await authAPI.getProfile();
-          const freshUserData = profileResponse.data.user;
+          // Verify token with backend
+          const response = await authAPI.verifyToken();
           
-          // Update localStorage with fresh data
-          localStorage.setItem('user', JSON.stringify(freshUserData));
-          
-          dispatch({
-            type: AUTH_ACTIONS.LOGIN_SUCCESS,
-            payload: {
-              token,
-              user: freshUserData,
-            },
-          });
+          if (response.data.success) {
+            // Use fresh user data from server instead of localStorage
+            const freshUser = response.data.user;
+            
+            // Update localStorage with fresh user data
+            localStorage.setItem('user', JSON.stringify(freshUser));
+            
+            dispatch({
+              type: AUTH_ACTIONS.LOGIN_SUCCESS,
+              payload: {
+                token,
+                user: freshUser,
+              },
+            });
+          } else {
+            throw new Error('Token verification failed');
+          }
         } catch (error) {
           // Token is invalid, clear storage
           localStorage.removeItem('token');
@@ -125,36 +132,32 @@ export const AuthProvider = ({ children }) => {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START });
 
       const response = await authAPI.login(credentials);
-      const { token, user } = response.data;
-
-      // Store token first
-      localStorage.setItem('token', token);
-
-      // Get fresh profile data to ensure we have the latest info including profile photo
-      try {
-        const profileResponse = await authAPI.getProfile();
-        const freshUserData = profileResponse.data.user;
+      
+      if (response.data.success) {
+        const { token, user } = response.data;
         
-        // Store fresh user data
-        localStorage.setItem('user', JSON.stringify(freshUserData));
-
-        dispatch({
-          type: AUTH_ACTIONS.LOGIN_SUCCESS,
-          payload: { token, user: freshUserData },
-        });
-      } catch (profileError) {
-        // If profile fetch fails, use the user data from login response
+        // Store in localStorage
+        localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
-        
+
         dispatch({
           type: AUTH_ACTIONS.LOGIN_SUCCESS,
           payload: { token, user },
         });
-      }
 
-      return { success: true };
+        return { success: true };
+      } else {
+        // Handle case where response is received but success is false
+        const errorMessage = response.data.message || 'Login failed';
+        dispatch({
+          type: AUTH_ACTIONS.LOGIN_FAILURE,
+          payload: errorMessage,
+        });
+        return { success: false, error: errorMessage };
+      }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Login failed';
+      // Handle network errors or HTTP error responses (401, 500, etc.)
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed';
       dispatch({
         type: AUTH_ACTIONS.LOGIN_FAILURE,
         payload: errorMessage,
@@ -185,26 +188,6 @@ export const AuthProvider = ({ children }) => {
       type: AUTH_ACTIONS.UPDATE_USER,
       payload: userData,
     });
-  };
-
-  // Refresh user data from server
-  const refreshUser = async () => {
-    try {
-      const response = await authAPI.getProfile();
-      const userData = response.data.user;
-      
-      // Update localStorage and state
-      localStorage.setItem('user', JSON.stringify(userData));
-      dispatch({
-        type: AUTH_ACTIONS.UPDATE_USER,
-        payload: userData,
-      });
-      
-      return userData;
-    } catch (error) {
-      console.error('Error refreshing user data:', error);
-      return null;
-    }
   };
 
   // Clear error function
@@ -257,7 +240,6 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateUser,
-    refreshUser,
     clearError,
     hasRole,
     hasAnyRole,

@@ -49,13 +49,12 @@ const Layout = ({ children }) => {
       <main 
         style={{ 
           marginLeft: isLargeScreen && sidebarOpen ? '280px' : '0',
-          minHeight: 'calc(100vh - 85px)',
-          marginTop: '85px', // Increased margin to move content down and reduce space
-          transition: 'margin-left 0.3s ease-in-out',
-          paddingLeft: isProfilePage && isLargeScreen && sidebarOpen ? '20px' : '0'
+          minHeight: 'calc(100vh - 56px)',
+          marginTop: '56px',
+          transition: 'margin-left 0.3s ease-in-out'
         }}
       >
-        <div className="container-fluid" style={{ padding: '1.5rem' }}>
+        <div className="container-fluid p-4">
           {children}
         </div>
       </main>

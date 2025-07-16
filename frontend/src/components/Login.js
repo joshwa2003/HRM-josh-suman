@@ -9,16 +9,40 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const { login, isAuthenticated, isLoading, error, clearError } = useAuth();
   const location = useLocation();
 
-  // Clear error when component mounts or form data changes
+  // Clear error when component unmounts
   useEffect(() => {
-    if (error) {
-      clearError();
+    return () => {
+      if (error) {
+        clearError();
+      }
+    };
+  }, [error, clearError]);
+
+  const validateForm = () => {
+    const errors = {};
+    
+    // Email validation
+    if (!formData.email) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
     }
-  }, [formData, clearError, error]);
+    
+    // Password validation
+    if (!formData.password) {
+      errors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   // Redirect if already authenticated
   const from = location.state?.from?.pathname || '/dashboard';
@@ -32,22 +56,77 @@ const Login = () => {
       ...prev,
       [name]: value,
     }));
+    
+    // Clear validation error for this field
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      return;
+    }
+    
+    // Clear any existing errors only after validation passes
+    if (error) {
+      clearError();
+    }
+    
     setIsSubmitting(true);
 
     try {
       const result = await login(formData);
       if (result.success) {
         // Redirect will happen automatically due to isAuthenticated change
+        console.log('Login successful');
+        // Only clear form on successful login
+        setFormData({
+          email: '',
+          password: '',
+        });
+      } else {
+        // Error will be displayed via the error state from AuthContext
+        console.log('Login failed:', result.error);
+        // Form data remains intact - no clearing on failure
       }
     } catch (error) {
       console.error('Login error:', error);
+      // Form data remains intact - no clearing on failure
+      // The error will be handled by AuthContext and displayed to user
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getErrorMessage = (error) => {
+    if (typeof error === 'string') {
+      return error;
+    }
+    
+    // Handle different types of errors
+    if (error?.message) {
+      const message = error.message.toLowerCase();
+      if (message.includes('invalid credentials') || message.includes('unauthorized')) {
+        return 'Invalid email address or password. Please check your credentials and try again.';
+      }
+      if (message.includes('account is deactivated')) {
+        return 'Your account has been deactivated. Please contact your administrator.';
+      }
+      if (message.includes('network') || message.includes('fetch')) {
+        return 'Unable to connect to the server. Please check your internet connection and try again.';
+      }
+      return error.message;
+    }
+    
+    return 'An unexpected error occurred. Please try again.';
   };
 
   const togglePasswordVisibility = () => {
@@ -82,7 +161,7 @@ const Login = () => {
                 {error && (
                   <div className="alert alert-danger alert-dismissible fade show" role="alert">
                     <i className="bi bi-exclamation-triangle-fill me-2"></i>
-                    {error}
+                    {getErrorMessage(error)}
                     <button 
                       type="button" 
                       className="btn-close" 
@@ -93,7 +172,7 @@ const Login = () => {
                 )}
 
                 {/* Login Form */}
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} noValidate>
                   {/* Email Field */}
                   <div className="mb-3">
                     <label htmlFor="email" className="form-label">
@@ -105,7 +184,7 @@ const Login = () => {
                       </span>
                       <input
                         type="email"
-                        className="form-control"
+                        className={`form-control ${validationErrors.email ? 'is-invalid' : ''}`}
                         id="email"
                         name="email"
                         value={formData.email}
@@ -115,6 +194,11 @@ const Login = () => {
                         autoComplete="email"
                         disabled={isSubmitting}
                       />
+                      {validationErrors.email && (
+                        <div className="invalid-feedback">
+                          {validationErrors.email}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -129,7 +213,7 @@ const Login = () => {
                       </span>
                       <input
                         type={showPassword ? 'text' : 'password'}
-                        className="form-control"
+                        className={`form-control ${validationErrors.password ? 'is-invalid' : ''}`}
                         id="password"
                         name="password"
                         value={formData.password}
@@ -147,6 +231,11 @@ const Login = () => {
                       >
                         <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
                       </button>
+                      {validationErrors.password && (
+                        <div className="invalid-feedback">
+                          {validationErrors.password}
+                        </div>
+                      )}
                     </div>
                   </div>
 

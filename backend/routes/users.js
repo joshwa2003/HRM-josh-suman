@@ -1,12 +1,16 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { auth, adminOnly, roleAccess } = require('../middleware/auth');
+const { auth, roleAccess } = require('../middleware/auth');
 const {
   getAllUsers,
   getUserById,
   createUser,
   updateUser,
-  getRoles
+  deleteUser,
+  getRoles,
+  getNextEmployeeId,
+  getRoleStats,
+  getUsersByRole
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -16,9 +20,24 @@ const router = express.Router();
 // @access  Private
 router.get('/roles', auth, getRoles);
 
+// @route   GET /api/users/roles/stats
+// @desc    Get role statistics
+// @access  Private (Admin, VP, HR roles, Team Leaders, Team Managers)
+router.get('/roles/stats', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']), getRoleStats);
+
+// @route   GET /api/users/roles/:role/users
+// @desc    Get users by role
+// @access  Private (Admin, VP, HR roles, Team Leaders, Team Managers)
+router.get('/roles/:role/users', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']), getUsersByRole);
+
+// @route   GET /api/users/next-employee-id/:role
+// @desc    Get next employee ID for a role
+// @access  Private (Admin, VP, HR roles)
+router.get('/next-employee-id/:role', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive']), getNextEmployeeId);
+
 // @route   GET /api/users
-// @desc    Get all users (Admin, VP, HR roles, Team Leaders, Team Managers)
-// @access  Private (Admin, VP, HR BP, HR Manager, HR Executive, Team Manager, Team Leader)
+// @desc    Get all users
+// @access  Private (Admin, VP, HR roles, Team Leaders, Team Managers)
 router.get('/', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']), getAllUsers);
 
 // @route   GET /api/users/:id
@@ -27,11 +46,11 @@ router.get('/', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manage
 router.get('/:id', auth, getUserById);
 
 // @route   POST /api/users
-// @desc    Create new user (Admin only)
-// @access  Private (Admin only)
+// @desc    Create new user
+// @access  Private (Admin, VP, HR roles, Team Leaders, Team Managers)
 router.post('/', [
   auth,
-  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee']),
+  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']),
   body('email')
     .isEmail()
     .normalizeEmail()
@@ -48,6 +67,7 @@ router.post('/', [
     .isLength({ min: 1, max: 50 })
     .withMessage('Last name is required and must be less than 50 characters'),
   body('role')
+    .optional()
     .isIn(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee'])
     .withMessage('Invalid role specified'),
   body('department')
@@ -63,19 +83,20 @@ router.post('/', [
   body('phoneNumber')
     .optional()
     .matches(/^\+?[\d\s-()]+$/)
-    .withMessage('Please provide a valid phone number')
-], (req, res, next) => {
-  if (req.user.role === 'Employee') {
-    return res.status(403).json({ message: 'Employees are not allowed to create users' });
-  }
-  next();
-}, createUser);
+    .withMessage('Please provide a valid phone number'),
+  body('designation')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Designation must be less than 100 characters')
+], createUser);
 
 // @route   PUT /api/users/:id
 // @desc    Update user
 // @access  Private
 router.put('/:id', [
   auth,
+  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']),
   body('firstName')
     .optional()
     .trim()
@@ -88,7 +109,7 @@ router.put('/:id', [
     .withMessage('Last name must be between 1 and 50 characters'),
   body('role')
     .optional()
-    .isIn(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'])
+    .isIn(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee'])
     .withMessage('Invalid role specified'),
   body('department')
     .optional()
@@ -99,10 +120,20 @@ router.put('/:id', [
     .optional()
     .matches(/^\+?[\d\s-()]+$/)
     .withMessage('Please provide a valid phone number'),
+  body('designation')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Designation must be less than 100 characters'),
   body('isActive')
     .optional()
     .isBoolean()
     .withMessage('isActive must be a boolean value')
 ], updateUser);
+
+// @route   DELETE /api/users/:id
+// @desc    Delete user
+// @access  Private (Admin and HR roles)
+router.delete('/:id', auth, roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive']), deleteUser);
 
 module.exports = router;

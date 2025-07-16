@@ -52,9 +52,6 @@ const userSchema = new mongoose.Schema({
   profilePhoto: {
     type: String // URL to profile photo
   },
-  profilePhotoPath: {
-    type: String // Supabase storage path for deletion
-  },
 
   // Work Information
   employeeId: {
@@ -78,7 +75,8 @@ const userSchema = new mongoose.Schema({
         'Employee'
       ],
       message: 'Invalid role specified'
-    }
+    },
+    default: 'Employee'
   },
   department: {
     type: mongoose.Schema.Types.ObjectId,
@@ -158,55 +156,6 @@ const userSchema = new mongoose.Schema({
     date: Date
   },
 
-  // Documents
-  documents: {
-    idProof: {
-      fileName: String,
-      originalName: String,
-      fileUrl: String,
-      filePath: String, // Supabase storage path
-      uploadedAt: Date,
-      fileSize: Number,
-      mimeType: String
-    },
-    offerLetter: {
-      fileName: String,
-      originalName: String,
-      fileUrl: String,
-      filePath: String,
-      uploadedAt: Date,
-      fileSize: Number,
-      mimeType: String
-    },
-    educationalCertificates: {
-      fileName: String,
-      originalName: String,
-      fileUrl: String,
-      filePath: String,
-      uploadedAt: Date,
-      fileSize: Number,
-      mimeType: String
-    },
-    experienceLetters: {
-      fileName: String,
-      originalName: String,
-      fileUrl: String,
-      filePath: String,
-      uploadedAt: Date,
-      fileSize: Number,
-      mimeType: String
-    },
-    passport: {
-      fileName: String,
-      originalName: String,
-      fileUrl: String,
-      filePath: String,
-      uploadedAt: Date,
-      fileSize: Number,
-      mimeType: String
-    }
-  },
-
   // System Fields
   isActive: {
     type: Boolean,
@@ -227,21 +176,28 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
+userSchema.index({ employeeId: 1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
 
-// Pre-save middleware to hash password
+// Pre-save middleware to hash password and generate employee ID
 userSchema.pre('save', async function(next) {
-  // Only hash the password if it has been modified (or is new)
-  if (!this.isModified('password')) return next();
-
   try {
-    // Hash password with cost of 12
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
+    // Generate employee ID if not provided and this is a new user
+    if (this.isNew && !this.employeeId && this.role) {
+      this.employeeId = await this.constructor.generateNextEmployeeId(this.role);
+    }
+
+    // Only hash the password if it has been modified (or is new)
+    if (this.isModified('password')) {
+      // Hash password with cost of 12
+      const salt = await bcrypt.genSalt(12);
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+    
     next();
   } catch (error) {
     next(error);
@@ -289,6 +245,62 @@ userSchema.statics.getRoles = function() {
     'Team Leader',
     'Employee'
   ];
+};
+
+// Static method to get role abbreviations
+userSchema.statics.getRoleAbbreviation = function(role) {
+  const abbreviations = {
+    'Admin': 'ADM',
+    'Vice President': 'VIC',
+    'HR BP': 'HRB',
+    'HR Manager': 'HRM',
+    'HR Executive': 'HRE',
+    'Team Manager': 'TMG',
+    'Team Leader': 'TLD',
+    'Employee': 'EMP'
+  };
+  return abbreviations[role] || 'EMP';
+};
+
+// Static method to generate next employee ID for a role
+userSchema.statics.generateNextEmployeeId = async function(role) {
+  try {
+    const abbreviation = this.getRoleAbbreviation(role);
+    
+    // Find all users with this role to get the count
+    const usersWithRole = await this.find({ role: role });
+    const nextNumber = usersWithRole.length + 1;
+    
+    // Format: ADM001, VIC002, etc.
+    const employeeId = abbreviation + String(nextNumber).padStart(3, '0');
+    
+    // Check if this employee ID already exists (in case of manual assignments)
+    const existingUser = await this.findOne({ employeeId: employeeId });
+    if (existingUser) {
+      // If exists, find the highest number for this role and increment
+      const rolePattern = new RegExp(`^${abbreviation}\\d{3}$`);
+      const existingIds = await this.find({ 
+        employeeId: { $regex: rolePattern } 
+      }).select('employeeId');
+      
+      let maxNumber = 0;
+      existingIds.forEach(user => {
+        if (user.employeeId) {
+          const number = parseInt(user.employeeId.substring(3));
+          if (number > maxNumber) {
+            maxNumber = number;
+          }
+        }
+      });
+      
+      return abbreviation + String(maxNumber + 1).padStart(3, '0');
+    }
+    
+    return employeeId;
+  } catch (error) {
+    console.error('Error generating employee ID:', error);
+    throw error;
+  }
 };
 
 // Transform output (remove password from JSON)

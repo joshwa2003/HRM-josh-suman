@@ -1,46 +1,67 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { userAPI } from '../../utils/api';
+import { useNavigate } from 'react-router-dom';
+import { userAPI, departmentAPI, teamAPI } from '../../utils/api';
 
 const UserManagement = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
+  const [roles, setRoles] = useState([]);
+  const [departments, setDepartments] = useState([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
+  const [validationErrors, setValidationErrors] = useState({});
   const [addFormData, setAddFormData] = useState({
     firstName: '',
-    middleName: '',
     lastName: '',
-    employeeId: '',
     email: '',
-    phoneNumber: '',
-    dateOfBirth: '',
-    gender: '',
-    joiningDate: '',
-    department: '',
-    designation: '',
-    employmentType: '',
-    reportingManager: '',
-    workLocation: '',
+    password: '',
     role: 'Employee',
-    isActive: true,
-    password: ''
+    department: '',
+    employeeId: '',
+    phoneNumber: '',
+    designation: '',
+    joiningDate: '',
+    isActive: true
   });
-  const [editFormData, setEditFormData] = useState({});
+
+  // Team assignment states
+  const [showTeamCreation, setShowTeamCreation] = useState(false);
+  const [teamFormData, setTeamFormData] = useState({
+    selectedTeam: ''
+  });
+  const [availableUsers, setAvailableUsers] = useState({
+    teams: []
+  });
+  const [editFormData, setEditFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: 'Employee',
+    department: '',
+    employeeId: '',
+    phoneNumber: '',
+    designation: '',
+    joiningDate: '',
+    isActive: true
+  });
 
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
+    fetchDepartments();
   }, [currentPage, searchTerm, roleFilter, departmentFilter]);
 
   const fetchUsers = async () => {
@@ -55,13 +76,50 @@ const UserManagement = () => {
       };
 
       const response = await userAPI.getAllUsers(params);
-      setUsers(response.data.users);
-      setTotalPages(response.data.totalPages);
-      setTotalUsers(response.data.total);
+      if (response.data.success) {
+        setUsers(response.data.users);
+        setTotalPages(response.data.totalPages);
+        setTotalUsers(response.data.total);
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch users');
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRoles = async () => {
+    try {
+      const response = await userAPI.getRoles();
+      if (response.data.success) {
+        setRoles(response.data.roles);
+      }
+    } catch (err) {
+      console.error('Failed to fetch roles:', err);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const response = await departmentAPI.getAllDepartments({ limit: 100, isActive: true });
+      if (response.data.departments) {
+        setDepartments(response.data.departments);
+      }
+    } catch (err) {
+      console.error('Failed to fetch departments:', err);
+    }
+  };
+
+  const fetchAvailableTeams = async () => {
+    try {
+      const response = await teamAPI.getAllTeams({ limit: 1000 });
+      if (response.data.success) {
+        setAvailableUsers({
+          teams: response.data.teams || []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch available teams:', err);
     }
   };
 
@@ -87,6 +145,47 @@ const UserManagement = () => {
     setCurrentPage(1);
   };
 
+  const handleOpenAddModal = async () => {
+    // Reset form data
+    setAddFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+      role: 'Employee',
+      department: '',
+      employeeId: '',
+      phoneNumber: '',
+      designation: '',
+      joiningDate: '',
+      isActive: true
+    });
+    
+    // Reset team form data
+    setTeamFormData({
+      selectedTeam: ''
+    });
+    
+    // Generate initial employee ID for default role (Employee)
+    try {
+      const response = await userAPI.getNextEmployeeId('Employee');
+      if (response.data.success) {
+        setAddFormData(prev => ({
+          ...prev,
+          employeeId: response.data.employeeId
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to generate initial employee ID:', err);
+    }
+    
+    // Fetch available teams for assignment
+    await fetchAvailableTeams();
+    
+    setValidationErrors({});
+    setShowAddModal(true);
+  };
+
   const formatDate = (date) => {
     if (!date) return 'Not provided';
     return new Date(date).toLocaleDateString('en-US', {
@@ -110,130 +209,335 @@ const UserManagement = () => {
     return colors[role] || 'bg-secondary';
   };
 
-  const handleAddInputChange = (e) => {
-    const { name, value } = e.target;
+  const handleAddInputChange = async (e) => {
+    const { name, value, type, checked } = e.target;
     setAddFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     }));
-  };
-
-  const handleViewUser = (userData) => {
-    setSelectedUser(userData);
-    setShowViewModal(true);
-  };
-
-  const handleEditUser = (userData) => {
-    setSelectedUser(userData);
-    setEditFormData({
-      firstName: userData.firstName || '',
-      middleName: userData.middleName || '',
-      lastName: userData.lastName || '',
-      employeeId: userData.employeeId || '',
-      email: userData.email || '',
-      phoneNumber: userData.phoneNumber || '',
-      dateOfBirth: userData.dateOfBirth ? userData.dateOfBirth.split('T')[0] : '',
-      gender: userData.gender || '',
-      joiningDate: userData.joiningDate ? userData.joiningDate.split('T')[0] : '',
-      department: userData.department?.name || userData.department || '',
-      designation: userData.designation || '',
-      employmentType: userData.employmentType || '',
-      manager: userData.reportingManager || '',
-      workLocation: userData.workLocation || '',
-      status: userData.isActive ? 'Active' : 'Inactive'
-    });
-    setShowEditModal(true);
+    
+    // Auto-generate employee ID when role changes
+    if (name === 'role' && value) {
+      try {
+        const response = await userAPI.getNextEmployeeId(value);
+        if (response.data.success) {
+          setAddFormData(prev => ({
+            ...prev,
+            employeeId: response.data.employeeId
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to generate employee ID:', err);
+      }
+    }
+    
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
   };
 
   const handleEditInputChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setEditFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     }));
+    
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
   };
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
-    try {
-      const userData = {
-        firstName: editFormData.firstName,
-        middleName: editFormData.middleName,
-        lastName: editFormData.lastName,
-        employeeId: editFormData.employeeId,
-        email: editFormData.email,
-        phoneNumber: editFormData.phoneNumber,
-        dateOfBirth: editFormData.dateOfBirth,
-        gender: editFormData.gender,
-        joiningDate: editFormData.joiningDate,
-        department: editFormData.department,
-        designation: editFormData.designation,
-        employmentType: editFormData.employmentType,
-        reportingManager: editFormData.manager,
-        workLocation: editFormData.workLocation,
-        isActive: editFormData.status === 'Active'
-      };
+  const handleEditUser = (userData) => {
+    setEditingUser(userData);
+    setEditFormData({
+      firstName: userData.firstName || '',
+      lastName: userData.lastName || '',
+      email: userData.email || '',
+      role: userData.role || 'Employee',
+      department: userData.department?._id || '',
+      employeeId: userData.employeeId || '',
+      phoneNumber: userData.phoneNumber || '',
+      designation: userData.designation || '',
+      joiningDate: userData.joiningDate ? userData.joiningDate.split('T')[0] : '',
+      isActive: userData.isActive !== undefined ? userData.isActive : true
+    });
+    setValidationErrors({});
+    setShowEditModal(true);
+  };
 
-      await userAPI.updateUser(selectedUser._id, userData);
-      setShowEditModal(false);
-      setSelectedUser(null);
-      setEditFormData({});
-      fetchUsers();
+  const handleToggleUserStatus = async (userData) => {
+    try {
       setError('');
+      setSuccess('');
+
+      const newStatus = !userData.isActive;
+      const response = await userAPI.updateUser(userData._id, {
+        isActive: newStatus
+      });
+      
+      if (response.data.success) {
+        setSuccess(`User ${newStatus ? 'activated' : 'deactivated'} successfully!`);
+        fetchUsers();
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update user');
+      console.error('Toggle user status error:', err);
+      setError(getErrorMessage(err));
     }
+  };
+
+  const validateUserForm = () => {
+    const errors = {};
+    
+    if (!addFormData.firstName.trim()) {
+      errors.firstName = 'First name is required';
+    } else if (addFormData.firstName.length > 50) {
+      errors.firstName = 'First name must be less than 50 characters';
+    }
+    
+    if (!addFormData.lastName.trim()) {
+      errors.lastName = 'Last name is required';
+    } else if (addFormData.lastName.length > 50) {
+      errors.lastName = 'Last name must be less than 50 characters';
+    }
+    
+    if (!addFormData.email.trim()) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addFormData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    
+    if (!addFormData.password) {
+      errors.password = 'Password is required';
+    } else if (addFormData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long';
+    }
+    
+    if (!addFormData.role) {
+      errors.role = 'Role is required';
+    }
+    
+    if (addFormData.phoneNumber && !/^\+?[\d\s-()]+$/.test(addFormData.phoneNumber)) {
+      errors.phoneNumber = 'Please enter a valid phone number';
+    }
+    
+    if (addFormData.department && addFormData.department.length > 100) {
+      errors.department = 'Department name must be less than 100 characters';
+    }
+    
+    if (addFormData.designation && addFormData.designation.length > 100) {
+      errors.designation = 'Designation must be less than 100 characters';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateEditForm = () => {
+    const errors = {};
+    
+    if (!editFormData.firstName.trim()) {
+      errors.firstName = 'First name is required';
+    } else if (editFormData.firstName.length > 50) {
+      errors.firstName = 'First name must be less than 50 characters';
+    }
+    
+    if (!editFormData.lastName.trim()) {
+      errors.lastName = 'Last name is required';
+    } else if (editFormData.lastName.length > 50) {
+      errors.lastName = 'Last name must be less than 50 characters';
+    }
+    
+    if (!editFormData.email.trim()) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    
+    if (!editFormData.role) {
+      errors.role = 'Role is required';
+    }
+    
+    if (editFormData.phoneNumber && !/^\+?[\d\s-()]+$/.test(editFormData.phoneNumber)) {
+      errors.phoneNumber = 'Please enter a valid phone number';
+    }
+    
+    if (editFormData.department && editFormData.department.length > 100) {
+      errors.department = 'Department name must be less than 100 characters';
+    }
+    
+    if (editFormData.designation && editFormData.designation.length > 100) {
+      errors.designation = 'Designation must be less than 100 characters';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const getErrorMessage = (error) => {
+    if (typeof error === 'string') {
+      return error;
+    }
+    
+    if (error?.response?.data) {
+      const data = error.response.data;
+      
+      if (data.errors && Array.isArray(data.errors)) {
+        return data.errors.map(err => err.msg || err.message).join(', ');
+      }
+      
+      if (data.message) {
+        const message = data.message.toLowerCase();
+        if (message.includes('email already exists')) {
+          return 'A user with this email address already exists. Please use a different email.';
+        }
+        if (message.includes('employee id already exists')) {
+          return 'This Employee ID is already in use. Please choose a different one.';
+        }
+        if (message.includes('validation failed')) {
+          return 'Please check your input and try again. All required fields must be filled correctly.';
+        }
+        return data.message;
+      }
+    }
+    
+    if (error?.message) {
+      if (error.message.includes('Network Error')) {
+        return 'Unable to connect to the server. Please check your internet connection and try again.';
+      }
+      return error.message;
+    }
+    
+    return 'An unexpected error occurred. Please try again.';
   };
 
   const handleAddUser = async (e) => {
     e.preventDefault();
+    
+    if (!validateUserForm()) {
+      return;
+    }
+    
     try {
-      // Prepare user data for API
+      setError('');
+      setSuccess('');
+
       const userData = {
-        firstName: addFormData.firstName,
-        middleName: addFormData.middleName,
-        lastName: addFormData.lastName,
-        employeeId: addFormData.employeeId,
-        email: addFormData.email,
-        phoneNumber: addFormData.phoneNumber,
-        dateOfBirth: addFormData.dateOfBirth,
-        gender: addFormData.gender,
-        joiningDate: addFormData.joiningDate,
-        department: addFormData.department,
-        designation: addFormData.designation,
-        employmentType: addFormData.employmentType,
-        reportingManager: addFormData.manager,
-        workLocation: addFormData.workLocation,
-        isActive: addFormData.status === 'Active',
-        username: addFormData.username,
-        password: addFormData.password
+        firstName: addFormData.firstName.trim(),
+        lastName: addFormData.lastName.trim(),
+        email: addFormData.email.trim().toLowerCase(),
+        password: addFormData.password,
+        role: addFormData.role,
+        department: addFormData.department.trim(),
+        phoneNumber: addFormData.phoneNumber.trim(),
+        designation: addFormData.designation.trim(),
+        joiningDate: addFormData.joiningDate || new Date().toISOString().split('T')[0],
+        isActive: addFormData.isActive
       };
 
-      await userAPI.createUser(userData);
-      setShowAddModal(false);
-      setAddFormData({
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        employeeId: '',
-        email: '',
-        phoneNumber: '',
-        dateOfBirth: '',
-        gender: '',
-        joiningDate: '',
-        department: '',
-        designation: '',
-        employmentType: '',
-        manager: '',
-        workLocation: '',
-        status: 'Active',
-        username: '',
-        password: ''
-      });
-      fetchUsers();
-      setError('');
+      // Only include employeeId if user is Admin and has provided one
+      if (user?.role === 'Admin' && addFormData.employeeId.trim()) {
+        userData.employeeId = addFormData.employeeId.trim();
+      }
+
+      // Include team assignment if enabled
+      if (showTeamCreation && teamFormData.selectedTeam) {
+        userData.teamId = teamFormData.selectedTeam;
+      }
+
+      const response = await userAPI.createUser(userData);
+      
+      if (response.data.success) {
+        let successMessage = 'User created successfully!';
+        
+        // Team assignment is now handled in the backend during user creation
+        if (showTeamCreation && teamFormData.selectedTeam) {
+          successMessage = 'User created and assigned to team successfully!';
+        }
+
+        setShowAddModal(false);
+        setShowTeamCreation(false);
+        setAddFormData({
+          firstName: '',
+          lastName: '',
+          email: '',
+          password: '',
+          role: 'Employee',
+          department: '',
+          employeeId: '',
+          phoneNumber: '',
+          designation: '',
+          joiningDate: '',
+          isActive: true
+        });
+        setTeamFormData({
+          selectedTeam: ''
+        });
+        setValidationErrors({});
+        setSuccess(successMessage);
+        fetchUsers();
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add user');
+      console.error('Create user error:', err);
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    
+    if (!validateEditForm()) {
+      return;
+    }
+    
+    try {
+      setError('');
+      setSuccess('');
+
+      const userData = {
+        firstName: editFormData.firstName.trim(),
+        lastName: editFormData.lastName.trim(),
+        email: editFormData.email.trim().toLowerCase(),
+        role: editFormData.role,
+        department: editFormData.department.trim(),
+        phoneNumber: editFormData.phoneNumber.trim(),
+        designation: editFormData.designation.trim(),
+        joiningDate: editFormData.joiningDate,
+        isActive: editFormData.isActive
+      };
+
+      // Note: Employee ID is never updated after creation
+
+      const response = await userAPI.updateUser(editingUser._id, userData);
+      
+      if (response.data.success) {
+        setShowEditModal(false);
+        setEditingUser(null);
+        setEditFormData({
+          firstName: '',
+          lastName: '',
+          email: '',
+          role: 'Employee',
+          department: '',
+          employeeId: '',
+          phoneNumber: '',
+          designation: '',
+          joiningDate: '',
+          isActive: true
+        });
+        setValidationErrors({});
+        setSuccess('User updated successfully!');
+        fetchUsers();
+      }
+    } catch (err) {
+      console.error('Update user error:', err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -249,7 +553,6 @@ const UserManagement = () => {
 
   return (
     <div className="container-fluid">
-      {/* Page Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h2 className="mb-1">User Management</h2>
@@ -257,13 +560,46 @@ const UserManagement = () => {
         </div>
         <div className="d-flex gap-2">
           <span className="badge bg-primary fs-6">{totalUsers} Total Users</span>
-          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-            <i className="bi bi-plus-circle me-1"></i> Add User
-          </button>
+          {(user?.role === 'Admin' || user?.role === 'Vice President' || user?.role === 'HR Manager') && (
+            <>
+              <button 
+                className="btn btn-outline-primary" 
+                onClick={() => navigate('/admin/users/add')}
+              >
+                <i className="bi bi-plus-circle me-1"></i> Add User
+              </button>
+              <button className="btn btn-primary" onClick={handleOpenAddModal}>
+                <i className="bi bi-plus-circle me-1"></i> Quick Add
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Filters */}
+      {success && (
+        <div className="alert alert-success alert-dismissible fade show" role="alert">
+          <i className="bi bi-check-circle-fill me-2"></i>
+          {success}
+          <button 
+            type="button" 
+            className="btn-close" 
+            onClick={() => setSuccess('')}
+          ></button>
+        </div>
+      )}
+
+      {error && (
+        <div className="alert alert-danger alert-dismissible fade show" role="alert">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+          {error}
+          <button 
+            type="button" 
+            className="btn-close" 
+            onClick={() => setError('')}
+          ></button>
+        </div>
+      )}
+
       <div className="card mb-4">
         <div className="card-body">
           <div className="row g-3">
@@ -290,14 +626,9 @@ const UserManagement = () => {
                 onChange={handleRoleFilter}
               >
                 <option value="">All Roles</option>
-                <option value="Admin">Admin</option>
-                <option value="Vice President">Vice President</option>
-                <option value="HR BP">HR BP</option>
-                <option value="HR Manager">HR Manager</option>
-                <option value="HR Executive">HR Executive</option>
-                <option value="Team Manager">Team Manager</option>
-                <option value="Team Leader">Team Leader</option>
-                <option value="Employee">Employee</option>
+                {roles.map(role => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
               </select>
             </div>
             <div className="col-md-3">
@@ -308,10 +639,9 @@ const UserManagement = () => {
                 onChange={handleDepartmentFilter}
               >
                 <option value="">All Departments</option>
-                <option value="Management">Management</option>
-                <option value="Human Resources">Human Resources</option>
-                <option value="Engineering">Engineering</option>
-                <option value="Operations">Operations</option>
+                {departments.map(dept => (
+                  <option key={dept._id} value={dept._id}>{dept.name}</option>
+                ))}
               </select>
             </div>
             <div className="col-md-2">
@@ -328,19 +658,6 @@ const UserManagement = () => {
         </div>
       </div>
 
-      {/* Error Alert */}
-      {error && (
-        <div className="alert alert-danger alert-dismissible fade show" role="alert">
-          {error}
-          <button 
-            type="button" 
-            className="btn-close" 
-            onClick={() => setError('')}
-          ></button>
-        </div>
-      )}
-
-      {/* Users Table */}
       <div className="card">
         <div className="card-body">
           {loading ? (
@@ -364,6 +681,7 @@ const UserManagement = () => {
                       <th>Employee</th>
                       <th>Role</th>
                       <th>Department</th>
+                      <th>Team</th>
                       <th>Employee ID</th>
                       <th>Contact</th>
                       <th>Joining Date</th>
@@ -392,7 +710,10 @@ const UserManagement = () => {
                           </span>
                         </td>
                         <td>
-                          {userData.department?.name || userData.department || 'Not assigned'}
+                          {userData.department?.name || 'Not assigned'}
+                        </td>
+                        <td>
+                          {userData.team?.name || 'Not assigned'}
                         </td>
                         <td>
                           <code>{userData.employeeId || 'Not assigned'}</code>
@@ -414,19 +735,41 @@ const UserManagement = () => {
                           <div className="btn-group" role="group">
                             <button
                               className="btn btn-sm btn-outline-primary"
-                              title="View Profile"
-                              onClick={() => handleViewUser(userData)}
+                              title={userData.isActive ? "Deactivate User" : "Activate User"}
+                              onClick={() => handleToggleUserStatus(userData)}
+                              disabled={user?.role === 'Employee'}
                             >
-                              <i className="bi bi-eye"></i>
+                              <i className={`bi ${userData.isActive ? 'bi-eye-slash text-warning' : 'bi-eye text-success'}`}></i>
                             </button>
-                            {(user?.role === 'Admin' || user?.role === 'Vice President' || user?.role === 'HR Manager') && (
-                              <button
-                                className="btn btn-sm btn-outline-secondary"
-                                title="Edit User"
-                                onClick={() => handleEditUser(userData)}
-                              >
-                                <i className="bi bi-pencil"></i>
-                              </button>
+                            {(user?.role === 'Admin' || user?.role === 'Vice President' || user?.role === 'HR BP' || user?.role === 'HR Manager' || user?.role === 'HR Executive') && (
+                              <>
+                                <button
+                                  className="btn btn-sm btn-outline-secondary"
+                                  title="Edit User"
+                                  onClick={() => handleEditUser(userData)}
+                                >
+                                  <i className="bi bi-pencil"></i>
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-outline-danger ms-1"
+                                  title="Delete User"
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete user ${userData.firstName} ${userData.lastName}?`)) {
+                                      try {
+                                        const response = await userAPI.deleteUser(userData._id);
+                                        if (response.data.success) {
+                                          setSuccess('User deleted successfully!');
+                                          fetchUsers();
+                                        }
+                                      } catch (err) {
+                                        setError(getErrorMessage(err));
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <i className="bi bi-trash"></i>
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -436,7 +779,6 @@ const UserManagement = () => {
                 </table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <nav className="mt-4">
                   <ul className="pagination justify-content-center">
@@ -476,110 +818,186 @@ const UserManagement = () => {
         </div>
       </div>
 
-      {/* Add User Modal */}
       {showAddModal && (
         <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
-              <form onSubmit={handleAddUser}>
+              <form onSubmit={handleAddUser} noValidate>
                 <div className="modal-header">
                   <h5 className="modal-title">Add New User</h5>
                   <button 
                     type="button" 
                     className="btn-close"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setValidationErrors({});
+                    }}
                   ></button>
                 </div>
                 <div className="modal-body">
                   <div className="row g-3">
-                    <div className="col-md-4">
+                    <div className="col-md-6">
                       <label className="form-label">First Name *</label>
                       <input
                         type="text"
-                        className="form-control"
+                        className={`form-control ${validationErrors.firstName ? 'is-invalid' : ''}`}
                         name="firstName"
                         value={addFormData.firstName}
                         onChange={handleAddInputChange}
                         required
                       />
+                      {validationErrors.firstName && (
+                        <div className="invalid-feedback">
+                          {validationErrors.firstName}
+                        </div>
+                      )}
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Middle Name</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="middleName"
-                        value={addFormData.middleName}
-                        onChange={handleAddInputChange}
-                      />
-                    </div>
-                    <div className="col-md-4">
+                    <div className="col-md-6">
                       <label className="form-label">Last Name *</label>
                       <input
                         type="text"
-                        className="form-control"
+                        className={`form-control ${validationErrors.lastName ? 'is-invalid' : ''}`}
                         name="lastName"
                         value={addFormData.lastName}
                         onChange={handleAddInputChange}
                         required
                       />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Employee ID *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="employeeId"
-                        value={addFormData.employeeId}
-                        onChange={handleAddInputChange}
-                        required
-                      />
+                      {validationErrors.lastName && (
+                        <div className="invalid-feedback">
+                          {validationErrors.lastName}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Email Address *</label>
                       <input
                         type="email"
-                        className="form-control"
+                        className={`form-control ${validationErrors.email ? 'is-invalid' : ''}`}
                         name="email"
                         value={addFormData.email}
                         onChange={handleAddInputChange}
                         required
                       />
+                      {validationErrors.email && (
+                        <div className="invalid-feedback">
+                          {validationErrors.email}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Password *</label>
+                      <input
+                        type="password"
+                        className={`form-control ${validationErrors.password ? 'is-invalid' : ''}`}
+                        name="password"
+                        value={addFormData.password}
+                        onChange={handleAddInputChange}
+                        minLength="6"
+                        required
+                      />
+                      {validationErrors.password && (
+                        <div className="invalid-feedback">
+                          {validationErrors.password}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Role *</label>
+                      <select
+                        className={`form-select ${validationErrors.role ? 'is-invalid' : ''}`}
+                        name="role"
+                        value={addFormData.role}
+                        onChange={handleAddInputChange}
+                        required
+                      >
+                        {roles.map(role => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </select>
+                      {validationErrors.role && (
+                        <div className="invalid-feedback">
+                          {validationErrors.role}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Department</label>
+                      <select
+                        className={`form-select ${validationErrors.department ? 'is-invalid' : ''}`}
+                        name="department"
+                        value={addFormData.department}
+                        onChange={handleAddInputChange}
+                      >
+                        <option value="">Select Department</option>
+                        {departments.map(dept => (
+                          <option key={dept._id} value={dept._id}>{dept.name}</option>
+                        ))}
+                      </select>
+                      {validationErrors.department && (
+                        <div className="invalid-feedback">
+                          {validationErrors.department}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Employee ID
+                        {user?.role !== 'Admin' && (
+                          <small className="text-muted ms-1">(Auto-generated)</small>
+                        )}
+                      </label>
+                      <input
+                        type="text"
+                        className={`form-control ${validationErrors.employeeId ? 'is-invalid' : ''}`}
+                        name="employeeId"
+                        value={addFormData.employeeId}
+                        onChange={handleAddInputChange}
+                        placeholder="e.g., EMP001"
+                        readOnly={user?.role !== 'Admin'}
+                        style={user?.role !== 'Admin' ? { backgroundColor: '#f8f9fa' } : {}}
+                      />
+                      {validationErrors.employeeId && (
+                        <div className="invalid-feedback">
+                          {validationErrors.employeeId}
+                        </div>
+                      )}
+                      {user?.role !== 'Admin' && (
+                        <small className="form-text text-muted">
+                          Employee ID is automatically generated based on role
+                        </small>
+                      )}
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Phone Number</label>
                       <input
                         type="tel"
-                        className="form-control"
+                        className={`form-control ${validationErrors.phoneNumber ? 'is-invalid' : ''}`}
                         name="phoneNumber"
                         value={addFormData.phoneNumber}
                         onChange={handleAddInputChange}
+                        placeholder="e.g., +1234567890"
                       />
+                      {validationErrors.phoneNumber && (
+                        <div className="invalid-feedback">
+                          {validationErrors.phoneNumber}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">Date of Birth</label>
+                      <label className="form-label">Designation</label>
                       <input
-                        type="date"
-                        className="form-control"
-                        name="dateOfBirth"
-                        value={addFormData.dateOfBirth}
+                        type="text"
+                        className={`form-control ${validationErrors.designation ? 'is-invalid' : ''}`}
+                        name="designation"
+                        value={addFormData.designation}
                         onChange={handleAddInputChange}
+                        placeholder="e.g., Software Engineer"
                       />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Gender</label>
-                      <select
-                        className="form-select"
-                        name="gender"
-                        value={addFormData.gender}
-                        onChange={handleAddInputChange}
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
+                      {validationErrors.designation && (
+                        <div className="invalid-feedback">
+                          {validationErrors.designation}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Joining Date</label>
@@ -591,327 +1009,260 @@ const UserManagement = () => {
                         onChange={handleAddInputChange}
                       />
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Department</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="department"
-                        value={addFormData.department}
-                        onChange={handleAddInputChange}
-                      />
+                    <div className="col-md-12">
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          name="isActive"
+                          id="isActive"
+                          checked={addFormData.isActive}
+                          onChange={handleAddInputChange}
+                        />
+                        <label className="form-check-label" htmlFor="isActive">
+                          Active User (can login to the system)
+                        </label>
+                      </div>
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Designation / Job Title</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="designation"
-                        value={addFormData.designation}
-                        onChange={handleAddInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Employment Type</label>
-                      <select
-                        className="form-select"
-                        name="employmentType"
-                        value={addFormData.employmentType}
-                        onChange={handleAddInputChange}
-                      >
-                        <option value="">Select Employment Type</option>
-                        <option value="Full-time">Full-time</option>
-                        <option value="Part-time">Part-time</option>
-                        <option value="Contract">Contract</option>
-                        <option value="Internship">Internship</option>
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Manager / Supervisor</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="manager"
-                        value={addFormData.manager}
-                        onChange={handleAddInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Work Location</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="workLocation"
-                        value={addFormData.workLocation}
-                        onChange={handleAddInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Status</label>
-                      <select
-                        className="form-select"
-                        name="status"
-                        value={addFormData.status}
-                        onChange={handleAddInputChange}
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="On leave">On leave</option>
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Username *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="username"
-                        value={addFormData.username}
-                        onChange={handleAddInputChange}
-                        required
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Password *</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        name="password"
-                        value={addFormData.password}
-                        onChange={handleAddInputChange}
-                        required
-                      />
-                    </div>
+
+                    {/* Team Assignment Section - Only for Employee role */}
+                    {(user?.role === 'Admin' || user?.role === 'HR Manager') && addFormData.role === 'Employee' && (
+                      <div className="col-md-12">
+                        <hr className="my-4" />
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <h6 className="mb-0">
+                            <i className="bi bi-people me-2"></i>
+                            Team Assignment
+                          </h6>
+                          <div className="form-check form-switch">
+                            <input
+                              className="form-check-input"
+                              type="checkbox"
+                              id="enableTeamAssignment"
+                              checked={showTeamCreation}
+                              onChange={(e) => setShowTeamCreation(e.target.checked)}
+                            />
+                            <label className="form-check-label" htmlFor="enableTeamAssignment">
+                              Assign to Team
+                            </label>
+                          </div>
+                        </div>
+                        
+                        {showTeamCreation && (
+                          <div className="border rounded p-3 bg-light">
+                            <div className="row g-3">
+                              <div className="col-md-12">
+                                <label className="form-label">Select Team *</label>
+                                <select
+                                  className="form-select"
+                                  value={teamFormData.selectedTeam || ''}
+                                  onChange={(e) => setTeamFormData(prev => ({...prev, selectedTeam: e.target.value}))}
+                                >
+                                  <option value="">Choose a team...</option>
+                                  {availableUsers.teams && availableUsers.teams.map(team => (
+                                    <option key={team._id} value={team._id}>
+                                      {team.name} ({team.code}) - {team.department?.name || 'No Department'}
+                                    </option>
+                                  ))}
+                                </select>
+                                <small className="form-text text-muted">
+                                  Select an existing team to assign this user to. Teams are created in Team Management.
+                                  <br />
+                                  <strong>Note:</strong> Team assignment is only available for Employee role. Team Managers and Team Leaders are assigned through Team Management.
+                                </small>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Info message for non-Employee roles */}
+                    {(user?.role === 'Admin' || user?.role === 'HR Manager') && addFormData.role !== 'Employee' && ['Team Manager', 'Team Leader'].includes(addFormData.role) && (
+                      <div className="col-md-12">
+                        <hr className="my-4" />
+                        <div className="alert alert-info">
+                          <i className="bi bi-info-circle me-2"></i>
+                          <strong>Team Assignment:</strong> {addFormData.role} roles are assigned to teams through the Team Management interface, not during user creation.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer">
                   <button 
                     type="button" 
                     className="btn btn-secondary"
-                    onClick={() => setShowAddModal(false)}
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setValidationErrors({});
+                    }}
                   >
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary">
-                    Add User
-                  </button>
-                </div>
+                    Create User
+                  </button>                </div>
               </form>
             </div>
           </div>
         </div>
       )}
 
-      {/* View User Modal */}
-      {showViewModal && selectedUser && (
+      {showEditModal && editingUser && (
         <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">User Profile - {selectedUser.firstName} {selectedUser.lastName}</h5>
-                <button 
-                  type="button" 
-                  className="btn-close"
-                  onClick={() => setShowViewModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="row g-3">
-                  <div className="col-12">
-                    <div className="d-flex align-items-center mb-3">
-                      <div className="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3"
-                           style={{ width: '60px', height: '60px' }}>
-                        <i className="bi bi-person text-white fs-3"></i>
-                      </div>
-                      <div>
-                        <h4 className="mb-1">{selectedUser.firstName} {selectedUser.middleName} {selectedUser.lastName}</h4>
-                        <span className={`badge ${getRoleBadgeColor(selectedUser.role)}`}>
-                          {selectedUser.role}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Employee ID</label>
-                    <p className="form-control-plaintext">{selectedUser.employeeId || 'Not assigned'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Email Address</label>
-                    <p className="form-control-plaintext">{selectedUser.email}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Phone Number</label>
-                    <p className="form-control-plaintext">{selectedUser.phoneNumber || 'Not provided'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Date of Birth</label>
-                    <p className="form-control-plaintext">{formatDate(selectedUser.dateOfBirth)}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Gender</label>
-                    <p className="form-control-plaintext">{selectedUser.gender || 'Not specified'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Joining Date</label>
-                    <p className="form-control-plaintext">{formatDate(selectedUser.joiningDate)}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Department</label>
-                    <p className="form-control-plaintext">{selectedUser.department?.name || selectedUser.department || 'Not assigned'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Designation</label>
-                    <p className="form-control-plaintext">{selectedUser.designation || 'Not specified'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Employment Type</label>
-                    <p className="form-control-plaintext">{selectedUser.employmentType || 'Not specified'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Work Location</label>
-                    <p className="form-control-plaintext">{selectedUser.workLocation || 'Not specified'}</p>
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold">Status</label>
-                    <p className="form-control-plaintext">
-                      <span className={`badge ${selectedUser.isActive ? 'bg-success' : 'bg-danger'}`}>
-                        {selectedUser.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={() => setShowViewModal(false)}
-                >
-                  Close
-                </button>
-                {(user?.role === 'Admin' || user?.role === 'Vice President' || user?.role === 'HR Manager') && (
-                  <button 
-                    type="button" 
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setShowViewModal(false);
-                      handleEditUser(selectedUser);
-                    }}
-                  >
-                    <i className="bi bi-pencil me-1"></i>
-                    Edit User
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit User Modal */}
-      {showEditModal && selectedUser && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <form onSubmit={handleUpdateUser}>
+              <form onSubmit={handleUpdateUser} noValidate>
                 <div className="modal-header">
-                  <h5 className="modal-title">Edit User - {selectedUser.firstName} {selectedUser.lastName}</h5>
+                  <h5 className="modal-title">Edit User</h5>
                   <button 
                     type="button" 
                     className="btn-close"
-                    onClick={() => setShowEditModal(false)}
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingUser(null);
+                      setValidationErrors({});
+                    }}
                   ></button>
                 </div>
                 <div className="modal-body">
                   <div className="row g-3">
-                    <div className="col-md-4">
+                    <div className="col-md-6">
                       <label className="form-label">First Name *</label>
                       <input
                         type="text"
-                        className="form-control"
+                        className={`form-control ${validationErrors.firstName ? 'is-invalid' : ''}`}
                         name="firstName"
                         value={editFormData.firstName}
                         onChange={handleEditInputChange}
                         required
                       />
+                      {validationErrors.firstName && (
+                        <div className="invalid-feedback">
+                          {validationErrors.firstName}
+                        </div>
+                      )}
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Middle Name</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="middleName"
-                        value={editFormData.middleName}
-                        onChange={handleEditInputChange}
-                      />
-                    </div>
-                    <div className="col-md-4">
+                    <div className="col-md-6">
                       <label className="form-label">Last Name *</label>
                       <input
                         type="text"
-                        className="form-control"
+                        className={`form-control ${validationErrors.lastName ? 'is-invalid' : ''}`}
                         name="lastName"
                         value={editFormData.lastName}
                         onChange={handleEditInputChange}
                         required
                       />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Employee ID *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="employeeId"
-                        value={editFormData.employeeId}
-                        onChange={handleEditInputChange}
-                        required
-                      />
+                      {validationErrors.lastName && (
+                        <div className="invalid-feedback">
+                          {validationErrors.lastName}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Email Address *</label>
                       <input
                         type="email"
-                        className="form-control"
+                        className={`form-control ${validationErrors.email ? 'is-invalid' : ''}`}
                         name="email"
                         value={editFormData.email}
                         onChange={handleEditInputChange}
                         required
                       />
+                      {validationErrors.email && (
+                        <div className="invalid-feedback">
+                          {validationErrors.email}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Role *</label>
+                      <select
+                        className={`form-select ${validationErrors.role ? 'is-invalid' : ''}`}
+                        name="role"
+                        value={editFormData.role}
+                        onChange={handleEditInputChange}
+                        required
+                      >
+                        {roles.map(role => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </select>
+                      {validationErrors.role && (
+                        <div className="invalid-feedback">
+                          {validationErrors.role}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">Department</label>
+                      <select
+                        className={`form-select ${validationErrors.department ? 'is-invalid' : ''}`}
+                        name="department"
+                        value={editFormData.department}
+                        onChange={handleEditInputChange}
+                      >
+                        <option value="">Select Department</option>
+                        {departments.map(dept => (
+                          <option key={dept._id} value={dept._id}>{dept.name}</option>
+                        ))}
+                      </select>
+                      {validationErrors.department && (
+                        <div className="invalid-feedback">
+                          {validationErrors.department}
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Employee ID
+                        <small className="text-muted ms-1">(Read-only)</small>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        name="employeeId"
+                        value={editFormData.employeeId}
+                        placeholder="e.g., EMP001"
+                        readOnly
+                        style={{ backgroundColor: '#f8f9fa' }}
+                      />
+                      <small className="form-text text-muted">
+                        Employee ID cannot be changed after creation
+                      </small>
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Phone Number</label>
                       <input
                         type="tel"
-                        className="form-control"
+                        className={`form-control ${validationErrors.phoneNumber ? 'is-invalid' : ''}`}
                         name="phoneNumber"
                         value={editFormData.phoneNumber}
                         onChange={handleEditInputChange}
+                        placeholder="e.g., +1234567890"
                       />
+                      {validationErrors.phoneNumber && (
+                        <div className="invalid-feedback">
+                          {validationErrors.phoneNumber}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">Date of Birth</label>
+                      <label className="form-label">Designation</label>
                       <input
-                        type="date"
-                        className="form-control"
-                        name="dateOfBirth"
-                        value={editFormData.dateOfBirth}
+                        type="text"
+                        className={`form-control ${validationErrors.designation ? 'is-invalid' : ''}`}
+                        name="designation"
+                        value={editFormData.designation}
                         onChange={handleEditInputChange}
+                        placeholder="e.g., Software Engineer"
                       />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Gender</label>
-                      <select
-                        className="form-select"
-                        name="gender"
-                        value={editFormData.gender}
-                        onChange={handleEditInputChange}
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
+                      {validationErrors.designation && (
+                        <div className="invalid-feedback">
+                          {validationErrors.designation}
+                        </div>
+                      )}
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Joining Date</label>
@@ -923,72 +1274,20 @@ const UserManagement = () => {
                         onChange={handleEditInputChange}
                       />
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Department</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="department"
-                        value={editFormData.department}
-                        onChange={handleEditInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Designation / Job Title</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="designation"
-                        value={editFormData.designation}
-                        onChange={handleEditInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Employment Type</label>
-                      <select
-                        className="form-select"
-                        name="employmentType"
-                        value={editFormData.employmentType}
-                        onChange={handleEditInputChange}
-                      >
-                        <option value="">Select Employment Type</option>
-                        <option value="Full-time">Full-time</option>
-                        <option value="Part-time">Part-time</option>
-                        <option value="Contract">Contract</option>
-                        <option value="Internship">Internship</option>
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Manager / Supervisor</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="manager"
-                        value={editFormData.manager}
-                        onChange={handleEditInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Work Location</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="workLocation"
-                        value={editFormData.workLocation}
-                        onChange={handleEditInputChange}
-                      />
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Status</label>
-                      <select
-                        className="form-select"
-                        name="status"
-                        value={editFormData.status}
-                        onChange={handleEditInputChange}
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
+                    <div className="col-md-12">
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          name="isActive"
+                          id="editIsActive"
+                          checked={editFormData.isActive}
+                          onChange={handleEditInputChange}
+                        />
+                        <label className="form-check-label" htmlFor="editIsActive">
+                          Active User (can login to the system)
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -996,12 +1295,15 @@ const UserManagement = () => {
                   <button 
                     type="button" 
                     className="btn btn-secondary"
-                    onClick={() => setShowEditModal(false)}
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingUser(null);
+                      setValidationErrors({});
+                    }}
                   >
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary">
-                    <i className="bi bi-check-circle me-1"></i>
                     Update User
                   </button>
                 </div>

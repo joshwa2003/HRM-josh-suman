@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { departmentAPI } from '../../utils/api';
 
 const DepartmentManagement = () => {
   const { user } = useAuth();
@@ -31,26 +32,17 @@ const DepartmentManagement = () => {
   const fetchDepartments = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `/api/departments?page=${currentPage}&limit=10&search=${searchTerm}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await departmentAPI.getAllDepartments({
+        page: currentPage,
+        limit: 10,
+        search: searchTerm
+      });
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch departments');
-      }
-
-      const data = await response.json();
+      const data = response.data;
       setDepartments(data.departments);
       setTotalPages(data.totalPages);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || err.message || 'Failed to fetch departments');
     } finally {
       setLoading(false);
     }
@@ -58,18 +50,8 @@ const DepartmentManagement = () => {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/departments/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const response = await departmentAPI.getDepartmentStats();
+      setStats(response.data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
@@ -78,25 +60,34 @@ const DepartmentManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
-      const url = editingDepartment 
-        ? `/api/departments/${editingDepartment._id}`
-        : '/api/departments';
+      // Prepare data by filtering out empty optional fields
+      const submitData = {
+        name: formData.name,
+        code: formData.code,
+        isActive: formData.isActive
+      };
+
+      // Only include optional fields if they have values
+      if (formData.description && formData.description.trim()) {
+        submitData.description = formData.description.trim();
+      }
       
-      const method = editingDepartment ? 'PUT' : 'POST';
+      if (formData.headOfDepartment && formData.headOfDepartment.trim()) {
+        submitData.headOfDepartment = formData.headOfDepartment.trim();
+      }
+      
+      if (formData.budget && formData.budget.toString().trim()) {
+        submitData.budget = parseFloat(formData.budget);
+      }
+      
+      if (formData.location && formData.location.trim()) {
+        submitData.location = formData.location.trim();
+      }
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save department');
+      if (editingDepartment) {
+        await departmentAPI.updateDepartment(editingDepartment._id, submitData);
+      } else {
+        await departmentAPI.createDepartment(submitData);
       }
 
       await fetchDepartments();
@@ -106,7 +97,7 @@ const DepartmentManagement = () => {
       // Show success message
       setError('');
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || err.message || 'Failed to save department');
     }
   };
 
@@ -130,24 +121,29 @@ const DepartmentManagement = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/departments/${departmentId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete department');
-      }
-
+      await departmentAPI.deleteDepartment(departmentId);
       await fetchDepartments();
       await fetchStats();
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || err.message || 'Failed to delete department');
+    }
+  };
+
+  const handleStatusToggle = async (departmentId, currentStatus) => {
+    const newStatus = !currentStatus;
+    const statusText = newStatus ? 'activate' : 'deactivate';
+    
+    if (!window.confirm(`Are you sure you want to ${statusText} this department?`)) {
+      return;
+    }
+
+    try {
+      await departmentAPI.toggleDepartmentStatus(departmentId, newStatus);
+      await fetchDepartments();
+      await fetchStats();
+      setError(''); // Clear any previous errors
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to update department status');
     }
   };
 
@@ -168,9 +164,16 @@ const DepartmentManagement = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
+    let processedValue = value;
+    
+    // Convert department code to uppercase and remove invalid characters
+    if (name === 'code') {
+      processedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+    
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : processedValue
     }));
   };
 
@@ -368,16 +371,27 @@ const DepartmentManagement = () => {
                         <button
                           className="btn btn-sm btn-outline-primary"
                           onClick={() => handleEdit(department)}
+                          title="Edit Department"
                         >
                           <i className="bi bi-pencil"></i>
                         </button>
-                        {user?.role === 'Admin' && (
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => handleDelete(department._id)}
-                          >
-                            <i className="bi bi-trash"></i>
-                          </button>
+                        {['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'].includes(user?.role) && (
+                          <>
+                            <button
+                              className={`btn btn-sm ${department.isActive ? 'btn-outline-warning' : 'btn-outline-success'}`}
+                              onClick={() => handleStatusToggle(department._id, department.isActive)}
+                              title={department.isActive ? 'Deactivate Department' : 'Activate Department'}
+                            >
+                              <i className={`bi ${department.isActive ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleDelete(department._id)}
+                              title="Delete Department"
+                            >
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -466,6 +480,10 @@ const DepartmentManagement = () => {
                           value={formData.code}
                           onChange={handleInputChange}
                           style={{ textTransform: 'uppercase' }}
+                          placeholder="e.g., IT, HR, FIN"
+                          pattern="[A-Z0-9]+"
+                          title="Department code must contain only uppercase letters and numbers"
+                          maxLength="10"
                           required
                         />
                       </div>

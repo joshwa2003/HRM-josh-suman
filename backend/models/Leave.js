@@ -35,19 +35,39 @@ const leaveSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Pending', 'Approved', 'Rejected', 'Cancelled'],
+    enum: ['Pending', 'Approved by TL', 'Rejected by TL', 'Approved', 'Rejected', 'Cancelled'],
     default: 'Pending'
   },
   appliedDate: {
     type: Date,
     default: Date.now
   },
+  // Team Leader Approval
+  tlApprovedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  tlApprovedDate: {
+    type: Date
+  },
+  tlComments: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Team Leader comments cannot exceed 500 characters']
+  },
+  
+  // HR/Final Approval
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   approvedDate: {
     type: Date
+  },
+  hrComments: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'HR comments cannot exceed 500 characters']
   },
   rejectionReason: {
     type: String,
@@ -56,10 +76,21 @@ const leaveSchema = new mongoose.Schema({
   },
   attachments: [{
     fileName: String,
+    originalName: String,
     fileUrl: String,
+    fileSize: Number,
+    mimeType: String,
     uploadDate: {
       type: Date,
       default: Date.now
+    },
+    expiryDate: {
+      type: Date,
+      default: function() {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 30);
+        return expiryDate;
+      }
     }
   }],
   isHalfDay: {
@@ -102,10 +133,10 @@ leaveSchema.index({ status: 1 });
 leaveSchema.index({ leaveType: 1 });
 leaveSchema.index({ appliedDate: -1 });
 
-// Validation: End date should be after start date
+// Validation: End date should be after or equal to start date
 leaveSchema.pre('validate', function(next) {
-  if (this.endDate <= this.startDate) {
-    next(new Error('End date must be after start date'));
+  if (this.endDate < this.startDate) {
+    next(new Error('End date cannot be before start date'));
   } else {
     next();
   }
@@ -115,12 +146,15 @@ leaveSchema.pre('validate', function(next) {
 leaveSchema.pre('save', function(next) {
   if (this.isModified('startDate') || this.isModified('endDate') || this.isModified('isHalfDay')) {
     const timeDiff = this.endDate.getTime() - this.startDate.getTime();
-    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
+    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
     
-    if (this.isHalfDay && daysDiff === 1) {
+    // If start date and end date are the same, it's a 1-day leave
+    const totalDaysCalculated = daysDiff === 0 ? 1 : daysDiff + 1;
+    
+    if (this.isHalfDay && totalDaysCalculated === 1) {
       this.totalDays = 0.5;
     } else {
-      this.totalDays = daysDiff;
+      this.totalDays = totalDaysCalculated;
     }
   }
   next();

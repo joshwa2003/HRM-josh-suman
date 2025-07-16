@@ -1,6 +1,4 @@
-
 const mongoose = require('mongoose');
-const SystemSettings = require('./SystemSettings');
 
 const attendanceSchema = new mongoose.Schema({
   employee: {
@@ -105,36 +103,7 @@ attendanceSchema.index({ status: 1 });
 attendanceSchema.index({ isLate: 1 });
 
 // Pre-save middleware to calculate total hours and status
-attendanceSchema.pre('save', async function(next) {
-  // Get work hours from system settings
-  const workHours = await SystemSettings.getWorkHours();
-  const [checkInHour, checkInMinute] = workHours.checkInTime.split(':').map(Number);
-  const [checkOutHour, checkOutMinute] = workHours.checkOutTime.split(':').map(Number);
-  const dailyWorkingHours = workHours.workingHours;
-  
-  // Check for late arrival if check-in is present
-  if (this.checkIn) {
-    // Create standard check-in time for the same date as the actual check-in
-    const checkInDate = new Date(this.checkIn);
-    const standardCheckIn = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
-    standardCheckIn.setHours(checkInHour, checkInMinute, 0, 0);
-    
-    // Calculate time difference in seconds for precise calculation
-    const timeDiffMs = this.checkIn.getTime() - standardCheckIn.getTime();
-    const timeDiffSeconds = timeDiffMs / 1000;
-    
-    if (timeDiffSeconds > 59) {
-      // Check-in is more than 59 seconds after standard time - LATE
-      this.isLate = true;
-      this.lateMinutes = Math.floor(timeDiffSeconds / 60);
-    } else {
-      // Check-in is within 59 seconds of standard time OR early - NOT LATE
-      this.isLate = false;
-      this.lateMinutes = 0;
-    }
-  }
-  
-  // Calculate total hours and other metrics if both check-in and check-out are present
+attendanceSchema.pre('save', function(next) {
   if (this.checkIn && this.checkOut) {
     // Calculate total hours
     const timeDiff = this.checkOut.getTime() - this.checkIn.getTime();
@@ -147,92 +116,39 @@ attendanceSchema.pre('save', async function(next) {
     
     this.totalHours = Math.max(0, totalMinutes / 60);
     
-    // Determine status based on configurable working hours
-    if (this.totalHours >= dailyWorkingHours) {
-      // If employee worked required hours, they are Present
-      // But keep Late status if they arrived late (dual status)
+    // Determine status
+    if (this.totalHours >= 8) {
       this.status = 'Present';
-    } else if (this.totalHours >= dailyWorkingHours / 2) {
+    } else if (this.totalHours >= 4) {
       this.status = 'Half Day';
     } else {
       this.status = 'Absent';
     }
     
-    // Note: isLate flag remains true if they arrived late, regardless of status
-    // This allows tracking both Present days and Late days in monthly summary
+    // Check for late arrival (assuming 9:00 AM is standard time)
+    const standardCheckIn = new Date(this.date);
+    standardCheckIn.setHours(9, 0, 0, 0);
     
-    // Check for early departure using configurable check-out time
-    const checkOutDate = new Date(this.checkOut);
-    const standardCheckOutForEarly = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
-    standardCheckOutForEarly.setHours(checkOutHour, checkOutMinute, 0, 0);
+    if (this.checkIn > standardCheckIn) {
+      this.isLate = true;
+      this.lateMinutes = Math.floor((this.checkIn.getTime() - standardCheckIn.getTime()) / (1000 * 60));
+      if (this.lateMinutes > 30) {
+        this.status = 'Late';
+      }
+    }
     
-    if (this.checkOut < standardCheckOutForEarly) {
+    // Check for early departure (assuming 6:00 PM is standard time)
+    const standardCheckOut = new Date(this.date);
+    standardCheckOut.setHours(18, 0, 0, 0);
+    
+    if (this.checkOut < standardCheckOut) {
       this.isEarly = true;
-      this.earlyMinutes = Math.floor((standardCheckOutForEarly.getTime() - this.checkOut.getTime()) / (1000 * 60));
-    } else {
-      this.isEarly = false;
-      this.earlyMinutes = 0;
+      this.earlyMinutes = Math.floor((standardCheckOut.getTime() - this.checkOut.getTime()) / (1000 * 60));
     }
     
-    // Calculate overtime based on user requirements:
-    // 1. Early check-in: time before standard check-in = overtime
-    // 2. Late check-out: time after standard check-out = overtime
-    // 3. Late check-in: NO overtime (just marked as late)
-    let overtimeMinutes = 0;
-    
-    // Use actual check-in date for standard times
-    const checkInDate = new Date(this.checkIn);
-    const standardCheckInTime = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
-    standardCheckInTime.setHours(checkInHour, checkInMinute, 0, 0);
-    
-    const checkOutDateForOvertime = new Date(this.checkOut);
-    const standardCheckOutTime = new Date(checkOutDateForOvertime.getFullYear(), checkOutDateForOvertime.getMonth(), checkOutDateForOvertime.getDate());
-    standardCheckOutTime.setHours(checkOutHour, checkOutMinute, 0, 0);
-    
-    // Early check-in overtime (ONLY if check-in is before standard time)
-    if (this.checkIn < standardCheckInTime) {
-      const earlyMinutes = Math.floor((standardCheckInTime.getTime() - this.checkIn.getTime()) / (1000 * 60));
-      // Allow up to 24 hours early for valid same-day scenarios
-      if (earlyMinutes > 0 && earlyMinutes < 1440) {
-        overtimeMinutes += earlyMinutes;
-      }
-    }
-    
-    // Late check-out overtime (ONLY if check-out is after standard time)
-    if (this.checkOut > standardCheckOutTime) {
-      const lateCheckOutMinutes = Math.floor((this.checkOut.getTime() - standardCheckOutTime.getTime()) / (1000 * 60));
-      // Allow up to 24 hours late for valid scenarios
-      if (lateCheckOutMinutes > 0 && lateCheckOutMinutes < 1440) {
-        overtimeMinutes += lateCheckOutMinutes;
-      }
-    }
-    
-    this.overtime = overtimeMinutes / 60; // Convert to hours
-  } else if (this.checkIn && !this.checkOut) {
-    // If only check-in is present, set initial status
-    if (this.isLate && this.lateMinutes > 30) {
-      this.status = 'Late';
-    } else {
-      this.status = 'Present'; // Temporary status until check-out
-    }
-    
-    // Calculate early check-in overtime for incomplete records
-    // Use actual check-in date for standard time calculation
-    const checkInDate = new Date(this.checkIn);
-    const standardCheckIn = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
-    standardCheckIn.setHours(checkInHour, checkInMinute, 0, 0);
-    
-    if (this.checkIn < standardCheckIn) {
-      // Calculate early minutes correctly
-      const earlyMinutes = Math.floor((standardCheckIn.getTime() - this.checkIn.getTime()) / (1000 * 60));
-      // Allow up to 24 hours early (1440 minutes) for valid same-day scenarios
-      if (earlyMinutes > 0 && earlyMinutes < 1440) {
-        this.overtime = Math.round((earlyMinutes / 60) * 100) / 100; // Convert to hours and round to 2 decimal places
-      } else {
-        this.overtime = 0;
-      }
-    } else {
-      this.overtime = 0;
+    // Calculate overtime (after 8 hours)
+    if (this.totalHours > 8) {
+      this.overtime = this.totalHours - 8;
     }
   }
   
@@ -278,34 +194,14 @@ attendanceSchema.statics.getMonthlySummary = async function(userId, year, month)
     date: { $gte: startDate, $lte: endDate }
   });
   
-  // Calculate total hours including current work hours for incomplete records
-  let totalHours = 0;
-  const now = new Date();
-  
-  attendance.forEach(record => {
-    if (record.checkIn && record.checkOut) {
-      // For completed records, use the calculated totalHours
-      totalHours += record.totalHours || 0;
-    } else if (record.checkIn && !record.checkOut) {
-      // Calculate current work hours for incomplete records using same logic as frontend
-      const timeDiff = now.getTime() - record.checkIn.getTime();
-      const totalMinutes = Math.floor(timeDiff / (1000 * 60));
-      
-      if (totalMinutes > 0) {
-        const currentHours = totalMinutes / 60;
-        totalHours += currentHours;
-      }
-    }
-  });
-  
   const summary = {
     totalDays: attendance.length,
     presentDays: attendance.filter(a => a.status === 'Present').length,
     absentDays: attendance.filter(a => a.status === 'Absent').length,
     lateDays: attendance.filter(a => a.isLate).length,
     halfDays: attendance.filter(a => a.status === 'Half Day').length,
-    totalHours: Math.round(totalHours * 100) / 100, // Round to 2 decimal places
-    overtimeHours: Math.round(attendance.reduce((sum, a) => sum + (a.overtime || 0), 0) * 100) / 100
+    totalHours: attendance.reduce((sum, a) => sum + a.totalHours, 0),
+    overtimeHours: attendance.reduce((sum, a) => sum + a.overtime, 0)
   };
   
   return summary;

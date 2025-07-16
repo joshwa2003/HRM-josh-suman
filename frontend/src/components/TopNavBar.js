@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const TopNavBar = ({ onToggleSidebar }) => {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -21,21 +21,6 @@ const TopNavBar = ({ onToggleSidebar }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  // Listen for profile updates
-  useEffect(() => {
-    const handleProfileUpdate = () => {
-      if (refreshUser) {
-        refreshUser();
-      }
-    };
-
-    window.addEventListener('profileUpdated', handleProfileUpdate);
-    
-    return () => {
-      window.removeEventListener('profileUpdated', handleProfileUpdate);
-    };
-  }, [refreshUser]);
 
   const handleProfileClick = () => {
     setIsDropdownOpen(!isDropdownOpen);
@@ -292,17 +277,6 @@ const TopNavBar = ({ onToggleSidebar }) => {
                     </div>
                   </button>
                 )}
-
-                <button
-                  className="dropdown-item d-flex align-items-center py-2"
-                  onClick={() => handleNavigation('/change-password')}
-                >
-                  <i className="bi bi-shield-lock me-3 text-warning" style={{ fontSize: '18px' }}></i>
-                  <div>
-                    <div className="fw-semibold">Change Password</div>
-                    <div className="text-muted small">Update your password securely</div>
-                  </div>
-                </button>
 
                 <button
                   className="dropdown-item d-flex align-items-center py-2"

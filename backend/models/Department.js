@@ -40,7 +40,7 @@ const departmentSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    // required: true
   },
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,

@@ -70,10 +70,10 @@ router.post('/', [
 
 // @route   PUT /api/departments/:id
 // @desc    Update department
-// @access  Private (Admin, VP, HR BP, HR Manager)
+// @access  Private (Admin, VP, HR BP, HR Manager, HR Executive, Team Manager, Team Leader)
 router.put('/:id', [
   auth,
-  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager']),
+  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']),
   body('name')
     .optional()
     .trim()
@@ -114,10 +114,10 @@ router.put('/:id', [
 
 // @route   DELETE /api/departments/:id
 // @desc    Delete department
-// @access  Private (Admin only)
+// @access  Private (Admin, VP, HR BP, HR Manager, HR Executive, Team Manager, Team Leader)
 router.delete('/:id', [
   auth,
-  roleAccess(['Admin'])
+  roleAccess(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'])
 ], deleteDepartment);
 
 module.exports = router;

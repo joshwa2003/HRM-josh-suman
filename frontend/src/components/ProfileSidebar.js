@@ -1,52 +1,15 @@
-  import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../utils/api';
 
 const ProfileSidebar = ({ isOpen, onToggle }) => {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState('personal');
-  const [profileData, setProfileData] = useState(null);
 
   const isActiveRoute = (path) => {
     return location.pathname === path;
   };
-
-  // Fetch profile data to get profile photo
-  useEffect(() => {
-    const fetchProfileData = async () => {
-      try {
-        const response = await api.get('/auth/profile');
-        setProfileData(response.data.user);
-      } catch (error) {
-        console.error('Error fetching profile data:', error);
-      }
-    };
-
-    fetchProfileData();
-  }, []);
-
-  // Listen for active section changes from MyProfile
-  useEffect(() => {
-    const handleActiveTabChange = (section) => {
-      setActiveSection(section);
-    };
-
-    // Set up global listener
-    window.profileActiveTabChange = handleActiveTabChange;
-
-    // Check URL hash for initial section
-    const hash = window.location.hash.replace('#', '');
-    if (hash) {
-      setActiveSection(hash);
-    }
-
-    return () => {
-      delete window.profileActiveTabChange;
-    };
-  }, []);
 
   const profileMenuItems = [
     {
@@ -66,7 +29,7 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
     {
       key: 'documents',
       title: 'Documents',
-      icon: 'bi-file-text',
+      icon: 'bi-file-earmark',
       path: '/profile',
       section: 'documents'
     },
@@ -111,20 +74,10 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
       icon: 'bi-graph-up',
       path: '/profile',
       section: 'performance'
-    },
-    {
-      key: 'settings',
-      title: 'Settings',
-      icon: 'bi-gear',
-      path: '/profile',
-      section: 'settings'
     }
   ];
 
   const handleSectionClick = (section) => {
-    // Update local state immediately
-    setActiveSection(section);
-    
     // Navigate to profile with section hash
     navigate(`/profile#${section}`);
     
@@ -150,9 +103,9 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
         className={`bg-light border-end position-fixed start-0 overflow-auto`}
         style={{ 
           width: '280px', 
-          top: '68px', // Precisely match navbar end to eliminate white line
-          height: 'calc(100vh - 68px)', // Full height minus navbar
-          zIndex: 1040, // Lower z-index to stay below navbar
+          top: '56px', // Start below the navbar
+          height: 'calc(100vh - 56px)', // Full height minus navbar
+          zIndex: 1050,
           transition: 'transform 0.3s ease-in-out',
           transform: isOpen ? 'translateX(0)' : 'translateX(-100%)'
         }}
@@ -174,27 +127,11 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
         </div>
 
         {/* User Info */}
-        <div className="p-3 bg-primary text-white">
+        <div className="p-3 border-bottom bg-primary text-white">
           <div className="d-flex align-items-center">
-            <div className="me-3" style={{ width: '50px', height: '50px' }}>
-              {profileData?.profilePhoto ? (
-                <img
-                  src={profileData.profilePhoto}
-                  alt="Profile"
-                  className="rounded-circle"
-                  style={{ 
-                    width: '50px', 
-                    height: '50px', 
-                    objectFit: 'cover',
-                    border: '2px solid white'
-                  }}
-                />
-              ) : (
-                <div className="bg-white rounded-circle d-flex align-items-center justify-content-center"
-                     style={{ width: '50px', height: '50px' }}>
-                  <i className="bi bi-person text-primary" style={{ fontSize: '1.5rem' }}></i>
-                </div>
-              )}
+            <div className="bg-white rounded-circle d-flex align-items-center justify-content-center me-3"
+                 style={{ width: '50px', height: '50px' }}>
+              <i className="bi bi-person text-primary" style={{ fontSize: '1.5rem' }}></i>
             </div>
             <div className="flex-grow-1">
               <div className="fw-bold">{user?.firstName} {user?.lastName}</div>
@@ -212,8 +149,8 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
             {profileMenuItems.map((item) => (
               <li key={item.key} className="nav-item mb-1">
                 <button
-                  className={`nav-link d-flex align-items-center w-100 border-0 text-start rounded ${
-                    activeSection === item.section ? 'active bg-primary text-white' : 'text-dark bg-transparent'
+                  className={`nav-link d-flex align-items-center w-100 border-0 bg-transparent text-start rounded ${
+                    isActiveRoute(item.path) && location.hash === `#${item.section}` ? 'active bg-primary text-white' : 'text-dark'
                   }`}
                   onClick={() => handleSectionClick(item.section)}
                   style={{ 
@@ -221,12 +158,12 @@ const ProfileSidebar = ({ isOpen, onToggle }) => {
                     transition: 'all 0.2s ease'
                   }}
                   onMouseEnter={(e) => {
-                    if (activeSection !== item.section) {
+                    if (!e.target.classList.contains('active')) {
                       e.target.style.backgroundColor = '#f8f9fa';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (activeSection !== item.section) {
+                    if (!e.target.classList.contains('active')) {
                       e.target.style.backgroundColor = 'transparent';
                     }
                   }}

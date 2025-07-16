@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
+const { scheduleCleanup } = require('./utils/fileCleanup');
 
 // Load environment variables
 dotenv.config();
@@ -10,7 +12,10 @@ dotenv.config();
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const departmentRoutes = require('./routes/departments');
-const attendanceRoutes = require('./routes/attendance');
+const leaveRoutes = require('./routes/leaves');
+const teamRoutes = require('./routes/teams');
+const holidayRoutes = require('./routes/holidays');
+const debugRoutes = require('./routes/debug');
 
 const app = express();
 
@@ -22,10 +27,11 @@ app.use(cors({
   ],
   credentials: true
 }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Increase payload size limits for file uploads (profile photos, documents)
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Serve static files for uploaded documents
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -52,6 +58,10 @@ mongoose.connect(process.env.MONGODB_URI, {
     await createDummyUsers();
     
     console.log('System initialization completed successfully');
+    
+    // Initialize document cleanup scheduler
+    scheduleCleanup();
+    
   } catch (error) {
     console.error('Error during initialization:', error);
   }
@@ -62,7 +72,10 @@ mongoose.connect(process.env.MONGODB_URI, {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
-app.use('/api/attendance', attendanceRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/teams', teamRoutes);
+app.use('/api/holidays', holidayRoutes);
+app.use('/api/debug', debugRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -87,7 +100,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -5,15 +5,20 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import MyProfile from './components/MyProfile';
-import EditProfile from './components/EditProfile';
 import Dashboard from './components/Dashboard';
 import DepartmentManagement from './components/admin/DepartmentManagement';
+import LeaveApproval from './components/admin/LeaveApproval';
+import LeaveRequest from './components/employee/LeaveRequest';
+import LeaveHistory from './components/employee/LeaveHistory';
 import UserManagement from './components/admin/UserManagement';
 import AddUser from './components/admin/AddUser';
-import MyAttendance from './components/MyAttendance';
-import ChangePassword from './components/ChangePassword';
-import LeaveAttendanceManagement from './components/admin/LeaveAttendanceManagement';
-import AttendanceReports from './components/admin/AttendanceReports';
+import UserRoles from './components/admin/UserRoles';
+import TeamManagement from './components/admin/TeamManagement';
+import OrganizationChart from './components/admin/OrganizationChart';
+import HolidayCalendar from './components/admin/HolidayCalendar';
+import MyTeamDashboard from './components/MyTeamDashboard';
+import MyManagedTeamsDashboard from './components/MyManagedTeamsDashboard';
+
 
 function App() {
   return (
@@ -36,16 +41,6 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <MyProfile />
-                  </Layout>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/profile/edit" 
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <EditProfile />
                   </Layout>
                 </ProtectedRoute>
               } 
@@ -77,31 +72,150 @@ function App() {
             <Route 
               path="/admin/users" 
               element={
-                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee']}>
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive']}>
                   <Layout>
                     <UserManagement />
                   </Layout>
                 </ProtectedRoute>
               } 
             />
-            <Route
-              path="/admin/users/add"
+            <Route 
+              path="/admin/users/add" 
               element={
-                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee']}>
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR Manager']}>
                   <Layout>
                     <AddUser />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/admin/users/roles" 
+              element={
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
+                  <Layout>
+                    <UserRoles />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Leave Management Routes */}
+            <Route 
+              path="/admin/leave/requests" 
+              element={
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
+                  <Layout>
+                    <LeaveApproval />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Holiday Calendar Route */}
+            <Route 
+              path="/admin/leave/holidays" 
+              element={
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
+                  <Layout>
+                    <HolidayCalendar />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Employee Leave Routes */}
+            <Route 
+              path="/employee/leave/apply" 
+              element={
+                <ProtectedRoute requiredRoles={['Employee', 'Team Leader', 'Team Manager', 'HR Executive', 'HR Manager', 'HR BP', 'Vice President', 'Admin']}>
+                  <Layout>
+                    <LeaveRequest />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/employee/leave/history" 
+              element={
+                <ProtectedRoute requiredRoles={['Employee', 'Team Leader', 'Team Manager', 'HR Executive', 'HR Manager', 'HR BP', 'Vice President', 'Admin']}>
+                  <Layout>
+                    <LeaveHistory />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Other Leave & Attendance Routes */}
+            
+            {/* Team Management Routes */}
+            <Route
+              path="/admin/teams"
+              element={
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
+                  <Layout>
+                    <TeamManagement />
                   </Layout>
                 </ProtectedRoute>
               }
             />
 
-            {/* Leave & Attendance Routes */}
+            {/* Organization Chart Route */}
+            <Route
+              path="/admin/org-chart"
+              element={
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive']}>
+                  <Layout>
+                    <OrganizationChart />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* My Team Dashboard for Team Leaders */}
+            <Route
+              path="/my-team"
+              element={
+                <ProtectedRoute requiredRoles={['Team Leader']}>
+                  <Layout>
+                    <MyTeamDashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* My Teams Dashboard for Team Managers */}
+            <Route
+              path="/my-teams"
+              element={
+                <ProtectedRoute requiredRoles={['Team Manager']}>
+                  <Layout>
+                    <MyManagedTeamsDashboard />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+                      {/* Leave & Attendance Routes */}
             <Route 
               path="/admin/leave/*" 
               element={
-                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee']}>
+                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
                   <Layout>
-                    <LeaveAttendanceManagement />
+                    <div className="container-fluid">
+                      <div className="alert alert-success">
+                        <h4><i className="bi bi-calendar3 me-2"></i>Leave & Attendance Management</h4>
+                        <p>This module will include:</p>
+                        <ul>
+                          <li>Leave request approval workflow</li>
+                          <li>Attendance tracking and reports</li>
+                          <li>Holiday calendar management</li>
+                          <li>Leave policy configuration</li>
+                          <li>Attendance regularization</li>
+                        </ul>
+                        <p className="mb-0"><strong>Status:</strong> <span className="badge bg-warning">In Development</span></p>
+                      </div>
+                    </div>
                   </Layout>
                 </ProtectedRoute>
               } 
@@ -209,16 +323,6 @@ function App() {
 
             {/* Reports Routes */}
             <Route 
-              path="/admin/reports/attendance" 
-              element={
-                <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
-                  <Layout>
-                    <AttendanceReports />
-                  </Layout>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
               path="/admin/reports/*" 
               element={
                 <ProtectedRoute requiredRoles={['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader']}>
@@ -263,30 +367,6 @@ function App() {
                         <p className="mb-0"><strong>Status:</strong> <span className="badge bg-warning">In Development</span></p>
                       </div>
                     </div>
-                  </Layout>
-                </ProtectedRoute>
-              } 
-            />
-
-            {/* My Attendance Route */}
-            <Route 
-              path="/employee/attendance" 
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <MyAttendance />
-                  </Layout>
-                </ProtectedRoute>
-              } 
-            />
-
-            {/* Change Password Route */}
-            <Route 
-              path="/change-password" 
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <ChangePassword />
                   </Layout>
                 </ProtectedRoute>
               } 

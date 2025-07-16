@@ -1,28 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import api from '../utils/api';
 
 const Sidebar = ({ isOpen, onToggle }) => {
   const { user, hasRole, hasAnyRole, getRoleLevel } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [expandedMenus, setExpandedMenus] = useState({});
-  const [profileData, setProfileData] = useState(null);
-
-  // Fetch profile data to get profile photo
-  useEffect(() => {
-    const fetchProfileData = async () => {
-      try {
-        const response = await api.get('/auth/profile');
-        setProfileData(response.data.user);
-      } catch (error) {
-        console.error('Error fetching profile data:', error);
-      }
-    };
-
-    fetchProfileData();
-  }, []);
 
   const toggleSubmenu = (menuKey) => {
     setExpandedMenus(prev => ({
@@ -75,28 +59,59 @@ const Sidebar = ({ isOpen, onToggle }) => {
       });
     }
 
-    // Leave & Attendance Management - Available to all roles
-    if (hasAnyRole(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader', 'Employee'])) {
-      const submenuItems = [
-        { title: 'My Attendance', path: '/admin/leave/my-attendance', icon: 'bi-clock-history' }
+    // Team Management for Team Managers
+    if (hasRole('Team Manager')) {
+      menuItems.push({
+        key: 'my-teams',
+        title: 'My Teams',
+        icon: 'bi-diagram-3',
+        path: '/my-teams'
+      });
+    }
+
+    // Team Management for Team Leaders
+    if (hasRole('Team Leader')) {
+      menuItems.push({
+        key: 'my-team',
+        title: 'My Team',
+        icon: 'bi-people',
+        path: '/my-team'
+      });
+    }
+
+    // Leave & Attendance Management
+    if (hasAnyRole(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'])) {
+      const leaveSubmenu = [
+        { title: 'Leave Requests', path: '/admin/leave/requests', icon: 'bi-calendar-check' },
+        { title: 'Leave Policies', path: '/admin/leave/policies', icon: 'bi-file-text' },
+        { title: 'Holiday Calendar', path: '/admin/leave/holidays', icon: 'bi-calendar-event' }
       ];
 
-      // Add management features for higher roles
-      if (hasAnyRole(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'])) {
-        submenuItems.push(
-          { title: 'Leave Requests', path: '#', icon: 'bi-calendar-check' },
-          { title: 'Attendance Reports', path: '/admin/reports/attendance', icon: 'bi-graph-up' },
-          { title: 'Leave Policies', path: '#', icon: 'bi-file-text' },
-          { title: 'Holiday Calendar', path: '#', icon: 'bi-calendar-event' },
-          { title: 'Regularization', path: '#', icon: 'bi-pencil-square' }
-        );
-      }
+      const attendanceSubmenu = [
+        { title: 'Attendance Records', path: '/admin/attendance/records', icon: 'bi-clock-history' },
+        { title: 'Attendance Reports', path: '/admin/attendance/reports', icon: 'bi-graph-up' },
+        { title: 'Regularization', path: '/admin/attendance/regularization', icon: 'bi-pencil-square' }
+      ];
 
       menuItems.push({
         key: 'leave-attendance',
         title: 'Leave & Attendance',
         icon: 'bi-calendar3',
-        submenu: submenuItems
+        submenu: [...leaveSubmenu, ...attendanceSubmenu]
+      });
+    }
+
+    // Employee self-service (available to all roles for their own leave management)
+    if (hasAnyRole(['Employee', 'Team Leader', 'Team Manager', 'HR Executive', 'HR Manager', 'HR BP', 'Vice President', 'Admin'])) {
+      menuItems.push({
+        key: 'my-leave-attendance',
+        title: 'My Leave & Attendance',
+        icon: 'bi-calendar3',
+        submenu: [
+          { title: 'Apply Leave', path: '/employee/leave/apply', icon: 'bi-calendar-plus' },
+          { title: 'My Leave History', path: '/employee/leave/history', icon: 'bi-calendar-check' },
+          { title: 'My Attendance', path: '/employee/attendance', icon: 'bi-clock' }
+        ]
       });
     }
 
@@ -182,7 +197,6 @@ const Sidebar = ({ isOpen, onToggle }) => {
       });
     }
 
-
     // Reports & Analytics
     if (hasAnyRole(['Admin', 'Vice President', 'HR BP', 'HR Manager', 'HR Executive', 'Team Manager', 'Team Leader'])) {
       const reportSubmenu = [
@@ -262,13 +276,7 @@ const Sidebar = ({ isOpen, onToggle }) => {
                     className={`nav-link d-flex align-items-center w-100 border-0 bg-transparent ${
                       isActiveRoute(subItem.path) ? 'active' : ''
                     }`}
-                    onClick={() => {
-                      if (subItem.path === '#') {
-                        alert('This feature is under development');
-                      } else {
-                        navigate(subItem.path);
-                      }
-                    }}
+                    onClick={() => navigate(subItem.path)}
                     style={{ textAlign: 'left' }}
                   >
                     <i className={`${subItem.icon} me-2`}></i>
@@ -314,48 +322,37 @@ const Sidebar = ({ isOpen, onToggle }) => {
         className={`bg-dark text-white position-fixed start-0 overflow-auto`}
         style={{ 
           width: '280px', 
-          top: '68px', // Precisely match navbar end to eliminate white line
-          height: 'calc(100vh - 68px)', // Full height minus navbar
-          zIndex: 1040, // Lower z-index to stay below navbar
+          top: '56px', // Start below the navbar
+          height: 'calc(100vh - 56px)', // Full height minus navbar
+          zIndex: 1050,
           transition: 'transform 0.3s ease-in-out',
           transform: isOpen ? 'translateX(0)' : 'translateX(-100%)'
         }}
       >
-        {/* User Info */}
+        {/* Sidebar Header */}
         <div className="p-3 border-bottom border-secondary">
           <div className="d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center flex-grow-1">
-              <div className="me-3" style={{ width: '40px', height: '40px' }}>
-                {profileData?.profilePhoto ? (
-                  <img
-                    src={profileData.profilePhoto}
-                    alt="Profile"
-                    className="rounded-circle"
-                    style={{ 
-                      width: '40px', 
-                      height: '40px', 
-                      objectFit: 'cover',
-                      border: '2px solid #0d6efd'
-                    }}
-                  />
-                ) : (
-                  <div className="bg-primary rounded-circle d-flex align-items-center justify-content-center"
-                       style={{ width: '40px', height: '40px' }}>
-                    <i className="bi bi-person text-white"></i>
-                  </div>
-                )}
-              </div>
-              <div className="flex-grow-1">
-                <div className="fw-semibold">{user?.firstName} {user?.lastName}</div>
-                <small className="text-muted">{user?.role}</small>
-              </div>
-            </div>
+
             <button 
               className="btn btn-sm btn-outline-light d-lg-none"
               onClick={onToggle}
             >
               <i className="bi bi-x"></i>
             </button>
+          </div>
+        </div>
+
+        {/* User Info */}
+        <div className="p-3 border-bottom border-secondary">
+          <div className="d-flex align-items-center">
+            <div className="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3"
+                 style={{ width: '40px', height: '40px' }}>
+              <i className="bi bi-person text-white"></i>
+            </div>
+            <div className="flex-grow-1">
+              <div className="fw-semibold">{user?.firstName} {user?.lastName}</div>
+              <small className="text-muted">{user?.role}</small>
+            </div>
           </div>
         </div>
 

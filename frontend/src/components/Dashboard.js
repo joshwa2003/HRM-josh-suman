@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { userAPI } from '../utils/api';
+import { userAPI, teamAPI } from '../utils/api';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const { user, logout, hasRole, hasAnyRole, getRoleLevel } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
     departments: 0,
   });
   const [recentUsers, setRecentUsers] = useState([]);
+  const [teamData, setTeamData] = useState(null);
+  const [managedTeams, setManagedTeams] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,6 +22,7 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
+      // Fetch data for Admin and VP
       if (hasAnyRole(['Admin', 'Vice President'])) {
         const response = await userAPI.getAllUsers({ limit: 5 });
         setRecentUsers(response.data.users || []);
@@ -26,6 +31,30 @@ const Dashboard = () => {
           activeUsers: response.data.users?.filter(u => u.isActive).length || 0,
           departments: [...new Set(response.data.users?.map(u => u.department).filter(Boolean))].length || 0,
         });
+      }
+
+      // Fetch team data for Team Leaders
+      if (hasRole('Team Leader')) {
+        try {
+          const teamResponse = await teamAPI.getMyTeam();
+          if (teamResponse.data.success) {
+            setTeamData(teamResponse.data.team);
+          }
+        } catch (err) {
+          console.log('No team assigned to this Team Leader');
+        }
+      }
+
+      // Fetch managed teams for Team Managers
+      if (hasRole('Team Manager')) {
+        try {
+          const teamsResponse = await teamAPI.getMyManagedTeams();
+          if (teamsResponse.data.success) {
+            setManagedTeams(teamsResponse.data.teams);
+          }
+        } catch (err) {
+          console.log('No teams assigned to this Team Manager');
+        }
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -102,11 +131,19 @@ const Dashboard = () => {
         { name: 'Documentation', icon: 'bi-file-text', description: 'HR documentation' },
         { name: 'Training Records', icon: 'bi-book', description: 'Training management' }
       );
-    } else if (hasAnyRole(['Team Manager', 'Team Leader'])) {
+    } else if (hasRole('Team Manager')) {
       features.push(
-        { name: 'Team Overview', icon: 'bi-people', description: 'Manage your team' },
-        { name: 'Task Management', icon: 'bi-list-check', description: 'Assign and track tasks' },
-        { name: 'Team Reports', icon: 'bi-graph-up', description: 'Team performance metrics' }
+        { name: 'My Teams Dashboard', icon: 'bi-diagram-3', description: 'Manage your teams', action: () => navigate('/my-teams') },
+        { name: 'Team Performance', icon: 'bi-graph-up', description: 'Team performance metrics' },
+        { name: 'Member Management', icon: 'bi-people', description: 'Manage team members' },
+        { name: 'Team Reports', icon: 'bi-bar-chart', description: 'Generate team reports' }
+      );
+    } else if (hasRole('Team Leader')) {
+      features.push(
+        { name: 'My Team Dashboard', icon: 'bi-people', description: 'Manage your team', action: () => navigate('/my-team') },
+        { name: 'Team Performance', icon: 'bi-graph-up', description: 'Monitor team performance' },
+        { name: 'Member Support', icon: 'bi-person-check', description: 'Support team members' },
+        { name: 'Team Activities', icon: 'bi-list-check', description: 'Track team activities' }
       );
     }
 
@@ -124,12 +161,12 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-vh-100 bg-light" style={{ minHeight: 'calc(100vh - 60px)' }}>
+    <div className="min-vh-100 bg-light">
       {/* Navigation Header */}
       {/* Main Content */}
-      <div className="container-fluid pt-1 pb-2">
+      <div className="container-fluid py-4">
         {/* Welcome Section */}
-        <div className="row mb-3">
+        <div className="row mb-4">
           <div className="col-12">
             <div className="card bg-gradient bg-primary text-white">
               <div className="card-body">
@@ -202,13 +239,22 @@ const Dashboard = () => {
                 <div className="row">
                   {getAccessibleFeatures().map((feature, index) => (
                     <div key={index} className="col-md-6 mb-3">
-                      <div className="d-flex align-items-start">
+                      <div 
+                        className={`d-flex align-items-start ${feature.action ? 'cursor-pointer' : ''}`}
+                        onClick={feature.action}
+                        style={{ cursor: feature.action ? 'pointer' : 'default' }}
+                      >
                         <div className="flex-shrink-0">
                           <i className={`bi ${feature.icon} text-primary`} style={{ fontSize: '1.5rem' }}></i>
                         </div>
                         <div className="flex-grow-1 ms-3">
                           <h6 className="mb-1">{feature.name}</h6>
                           <small className="text-muted">{feature.description}</small>
+                          {feature.action && (
+                            <div className="mt-1">
+                              <small className="text-primary">Click to access →</small>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -258,8 +304,97 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* User Profile Card (for non-admin users) */}
-          {!hasAnyRole(['Admin', 'Vice President']) && (
+          {/* Team Leader Dashboard Widget */}
+          {hasRole('Team Leader') && teamData && (
+            <div className="col-md-4">
+              <div className="card">
+                <div className="card-header">
+                  <h5 className="card-title mb-0">
+                    <i className="bi bi-people me-2"></i>
+                    My Team
+                  </h5>
+                </div>
+                <div className="card-body">
+                  <h6 className="card-title">{teamData.name}</h6>
+                  <p className="card-text">
+                    <small className="text-muted">Code: {teamData.code}</small>
+                  </p>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <small className="text-muted">Team Size:</small>
+                    <span className="badge bg-primary">
+                      {teamData.members?.length || 0} / {teamData.maxSize}
+                    </span>
+                  </div>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <small className="text-muted">Department:</small>
+                    <small>{teamData.department || 'Not assigned'}</small>
+                  </div>
+                  <div className="d-grid">
+                    <button 
+                      className="btn btn-primary btn-sm"
+                      onClick={() => navigate('/my-team')}
+                    >
+                      <i className="bi bi-arrow-right me-1"></i>
+                      Manage Team
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Team Manager Dashboard Widget */}
+          {hasRole('Team Manager') && managedTeams.length > 0 && (
+            <div className="col-md-4">
+              <div className="card">
+                <div className="card-header">
+                  <h5 className="card-title mb-0">
+                    <i className="bi bi-diagram-3 me-2"></i>
+                    My Teams
+                  </h5>
+                </div>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <small className="text-muted">Total Teams:</small>
+                    <span className="badge bg-primary">{managedTeams.length}</span>
+                  </div>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <small className="text-muted">Total Members:</small>
+                    <span className="badge bg-success">
+                      {managedTeams.reduce((sum, team) => sum + (team.members?.length || 0), 0)}
+                    </span>
+                  </div>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <small className="text-muted">Active Teams:</small>
+                    <span className="badge bg-info">
+                      {managedTeams.filter(team => team.isActive).length}
+                    </span>
+                  </div>
+                  <div className="mb-3">
+                    <small className="text-muted d-block mb-1">Recent Teams:</small>
+                    {managedTeams.slice(0, 2).map(team => (
+                      <div key={team._id} className="d-flex justify-content-between align-items-center">
+                        <small>{team.name}</small>
+                        <small className="text-muted">{team.members?.length || 0} members</small>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="d-grid">
+                    <button 
+                      className="btn btn-primary btn-sm"
+                      onClick={() => navigate('/my-teams')}
+                    >
+                      <i className="bi bi-arrow-right me-1"></i>
+                      Manage Teams
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* User Profile Card (for other users) */}
+          {!hasAnyRole(['Admin', 'Vice President']) && !hasRole('Team Leader') && !hasRole('Team Manager') && (
             <div className="col-md-4">
               <div className="card">
                 <div className="card-header">
@@ -282,6 +417,32 @@ const Dashboard = () => {
                       </p>
                     )}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty Team State for Team Leaders/Managers */}
+          {((hasRole('Team Leader') && !teamData) || (hasRole('Team Manager') && managedTeams.length === 0)) && (
+            <div className="col-md-4">
+              <div className="card">
+                <div className="card-header">
+                  <h5 className="card-title mb-0">
+                    <i className="bi bi-exclamation-triangle me-2"></i>
+                    No Teams Assigned
+                  </h5>
+                </div>
+                <div className="card-body text-center">
+                  <i className="bi bi-people text-muted" style={{ fontSize: '3rem' }}></i>
+                  <p className="text-muted mt-2 mb-0">
+                    {hasRole('Team Leader') 
+                      ? 'You are not assigned as a Team Leader for any team.'
+                      : 'You are not assigned as a Team Manager for any teams.'
+                    }
+                  </p>
+                  <small className="text-muted">
+                    Please contact your administrator.
+                  </small>
                 </div>
               </div>
             </div>
